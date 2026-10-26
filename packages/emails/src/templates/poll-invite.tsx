@@ -23,12 +23,16 @@ export type PollInviteEmailProps = {
   hostName: string;
   pollTitle: string;
   inviteUrl: string;
+  recipientName?: string;
+  message?: string;
 };
 
 async function PollInviteEmail({
   hostName,
   pollTitle,
   inviteUrl,
+  recipientName,
+  message,
   locale = "en",
   chrome,
 }: PollInviteEmailProps) {
@@ -53,6 +57,12 @@ async function PollInviteEmail({
           <Heading>
             {t("pollInvite_heading", { defaultValue: "You're invited" })}
           </Heading>
+          {recipientName ? (
+            <Text>
+              {t("pollInvite_greeting", { defaultValue: "Hello" })}{" "}
+              {recipientName},
+            </Text>
+          ) : null}
           <Text>
             <Trans
               t={t}
@@ -64,6 +74,21 @@ async function PollInviteEmail({
               components={{ b: <Strong /> }}
             />
           </Text>
+          {message ? (
+            <pre
+              style={{
+                fontFamily: "inherit",
+                fontSize: 14,
+                lineHeight: "24px",
+                borderLeft: `3px solid ${chrome.primaryColor}`,
+                paddingLeft: 16,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {message}
+            </pre>
+          ) : null}
           <Button href={inviteUrl} id="inviteUrl" color={chrome.primaryColor}>
             {t("pollInvite_button", { defaultValue: "Respond" })}
           </Button>
@@ -77,6 +102,8 @@ async function PollInviteEmail({
 
 PollInviteEmail.PreviewProps = {
   hostName: "Jessie Smith",
+  recipientName: "Alice",
+  message: "Let's find a date for our next team meeting!",
   pollTitle: "Team offsite dates",
   inviteUrl: "https://rallly.co/invite/abc123?invite=token",
   locale: "en",

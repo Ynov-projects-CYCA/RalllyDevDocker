@@ -120,7 +120,11 @@ test.describe("Email invites", () => {
     await expect(dialog.getByRole("button", { name: "Copy" })).toBeVisible();
 
     const field = dialog.getByLabel("Email address");
+    await dialog.getByLabel("Recipient's first name").fill("Alice");
     await field.fill(INVITEE);
+    await dialog
+      .getByLabel("Personal message (optional)")
+      .fill("Bring your ideas for the Docker project!");
     await field.press("Enter");
 
     const row = dialog.getByRole("listitem").filter({ hasText: INVITEE });
@@ -134,6 +138,8 @@ test.describe("Email invites", () => {
     expect(email.Subject).toBe(
       `Pro Host invited you to respond to ${POLL_TITLE}`,
     );
+    expect(email.HTML).toContain("Alice");
+    expect(email.HTML).toContain("Bring your ideas for the Docker project!");
     expect(email.HTML).toContain("/invite/");
     expect(email.HTML).toContain("?token=");
     // Replies reach the host, not the From address.
@@ -154,6 +160,7 @@ test.describe("Email invites", () => {
     );
 
     // Same address again is refused without sending.
+    await dialog.getByLabel("Recipient's first name").fill("Alice");
     await field.fill(INVITEE);
     await field.press("Enter");
     // Scoped to the dialog: the same message also lands in a toast.
@@ -291,6 +298,7 @@ test.describe("Email invites", () => {
     // Sending an invite refreshes the route; a router sync must not put the
     // consumed param back on the address bar.
     const field = dialog.getByLabel("Email address");
+    await dialog.getByLabel("Recipient's first name").fill("Alice");
     await field.fill(INVITEE);
     await field.press("Enter");
     const row = dialog.getByRole("listitem").filter({ hasText: INVITEE });
@@ -316,6 +324,7 @@ test.describe("Email invites", () => {
       }),
     ).toBe(1);
 
+    await dialog.getByLabel("Recipient's first name").fill("Alice");
     await field.fill(INVITEE);
     await field.press("Enter");
     await expect(row.getByText("Sent")).toBeVisible();
@@ -339,6 +348,7 @@ test.describe("Email invites", () => {
     await expect(sendButton).toBeEnabled();
     await expect(sendButton.getByText("Pro")).toBeVisible();
 
+    await dialog.getByLabel("Recipient's first name").fill("Alice");
     await dialog.getByLabel("Email address").fill(INVITEE);
     await sendButton.click();
 

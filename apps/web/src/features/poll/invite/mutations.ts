@@ -33,10 +33,14 @@ export async function sendPollInvite({
   pollId,
   userId,
   email,
+  recipientName,
+  message,
 }: {
   pollId: string;
   userId: string;
   email: string;
+  recipientName: string;
+  message?: string;
 }): Promise<SendPollInviteResult> {
   const [poll, sender] = await Promise.all([
     prisma.poll.findFirst({
@@ -181,6 +185,8 @@ export async function sendPollInvite({
         : await getInstanceBranding(),
       props: {
         hostName: sender.name,
+        recipientName,
+        message,
         pollTitle: poll.title,
         inviteUrl: shortUrl(getPollInvitePath({ pollId, token })),
       },

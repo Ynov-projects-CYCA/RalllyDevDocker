@@ -4,15 +4,19 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { mutationOptions } from "@next-safe-action/adapter-tanstack-query";
 import { passwordManagerIgnoreProps } from "@rallly/ui";
 import { Button } from "@rallly/ui/button";
+import { Input } from "@rallly/ui/input";
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from "@rallly/ui/input-group";
+import { Label } from "@rallly/ui/label";
 import { toast } from "@rallly/ui/sonner";
+import { Textarea } from "@rallly/ui/textarea";
 import { useMutation } from "@tanstack/react-query";
 import { MailIcon } from "lucide-react";
 import React from "react";
+import type { FieldErrors } from "react-hook-form";
 import { useForm } from "react-hook-form";
 import { AnimatedHeight } from "@/components/animated-height";
 import {
@@ -45,8 +49,12 @@ type Row = {
 };
 
 // Same rule as the server, so a client accepted address is never refused
-const inviteFormSchema = sendPollInviteSchema.pick({ email: true });
-type InviteFormValues = { email: string };
+const inviteFormSchema = sendPollInviteSchema.omit({ pollId: true });
+type InviteFormValues = {
+  email: string;
+  recipientName: string;
+  message?: string;
+};
 
 /**
  * The list is fetched when the dialog mounts rather than with the page: most
@@ -74,10 +82,19 @@ export function InviteByEmail({
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteFormSchema),
-    defaultValues: { email: "" },
+    defaultValues: { email: "", recipientName: "", message: "" },
   });
   const [sending, setSending] = React.useState<string[]>([]);
   const [announcement, setAnnouncement] = React.useState("");
+  const recipientNameError = t("shareDialogRecipientNameError", {
+    defaultValue: "Enter a first name between 1 and 100 characters.",
+  });
+  const emailError = t("shareDialogInvalidEmail", {
+    defaultValue: "Enter a single valid email address",
+  });
+  const messageError = t("shareDialogMessageError", {
+    defaultValue: "The message must contain at most 1000 characters.",
+  });
   const announceTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -125,6 +142,7 @@ export function InviteByEmail({
     mutationOptions(sendPollInviteAction, {
       onSuccess: async (data, input) => {
         if (data.ok) {
+          form.reset();
           announce(
             t("shareDialogInviteSent", {
               defaultValue: "Invite sent to {email}",
@@ -168,27 +186,31 @@ export function InviteByEmail({
         };
         toast.error(messages[data.reason]);
         announce(messages[data.reason]);
-        if (data.reason === "sendFailed") {
-          form.setValue("email", input.email);
-        }
       },
       onError: (_error, input) => {
         setSending((prev) => prev.filter((address) => address !== input.email));
-        form.setValue("email", input.email);
       },
     }),
   );
 
-  const onInvalid = () => {
-    announce(
-      t("shareDialogInvalidEmail", {
-        defaultValue: "Enter a single valid email address",
-      }),
-    );
-    form.setFocus("email");
+  const onInvalid = (errors: FieldErrors<InviteFormValues>) => {
+    if (errors.recipientName) {
+      announce(recipientNameError);
+      form.setFocus("recipientName");
+    } else if (errors.email) {
+      announce(emailError);
+      form.setFocus("email");
+    } else if (errors.message) {
+      announce(messageError);
+      form.setFocus("message");
+    }
   };
 
-  const onValid = ({ email: address }: InviteFormValues) => {
+  const onValid = ({
+    email: address,
+    recipientName,
+    message,
+  }: InviteFormValues) => {
     if (isFree) {
       showPayWall({ from: "invite-dialog", pollId: pollId });
       return;
@@ -204,21 +226,51 @@ export function InviteByEmail({
       return;
     }
     setSending((prev) => [address, ...prev]);
-    form.reset();
-    form.setFocus("email");
-    sendInvite.mutate({ pollId, email: address });
+    sendInvite.mutate({ pollId, email: address, recipientName, message });
   };
+
+  const disabled = !isOpen || sendInvite.isPending;
 
   return (
     <div className="min-w-0">
       <form
         onSubmit={form.handleSubmit(onValid, onInvalid)}
-        className="flex min-w-0 gap-2"
+        className="flex min-w-0 flex-col gap-3"
         noValidate
       >
-        <label htmlFor="share-dialog-email" className="sr-only">
+        <div className="space-y-2">
+          <Label htmlFor="share-dialog-recipient-name">
+            <Trans
+              i18nKey="shareDialogRecipientName"
+              defaults="Recipient's first name"
+            />
+          </Label>
+          <Input
+            {...form.register("recipientName")}
+            id="share-dialog-recipient-name"
+            autoComplete="off"
+            maxLength={100}
+            disabled={disabled}
+            aria-required="true"
+            aria-invalid={!!form.formState.errors.recipientName}
+            aria-describedby={
+              form.formState.errors.recipientName
+                ? "share-dialog-name-error"
+                : undefined
+            }
+          />
+          {form.formState.errors.recipientName ? (
+            <p
+              id="share-dialog-name-error"
+              className="text-destructive text-sm"
+            >
+              {recipientNameError}
+            </p>
+          ) : null}
+        </div>
+        <Label htmlFor="share-dialog-email">
           <Trans i18nKey="emailAddress" defaults="Email address" />
-        </label>
+        </Label>
         <InputGroup className="min-w-0 flex-1">
           <InputGroupAddon>
             <MailIcon />
@@ -231,15 +283,64 @@ export function InviteByEmail({
             autoComplete="off"
             {...passwordManagerIgnoreProps}
             placeholder="jessie.smith@example.com"
-            disabled={!isOpen}
+            disabled={disabled}
+            aria-required="true"
             aria-invalid={form.formState.errors.email ? true : undefined}
-            aria-describedby={isOpen ? undefined : "share-dialog-closed-reason"}
+            aria-describedby={
+              form.formState.errors.email
+                ? "share-dialog-email-error"
+                : undefined
+            }
           />
         </InputGroup>
+        {form.formState.errors.email ? (
+          <p id="share-dialog-email-error" className="text-destructive text-sm">
+            {emailError}
+          </p>
+        ) : null}
+        <div className="space-y-2">
+          <Label htmlFor="share-dialog-message">
+            <Trans
+              i18nKey="shareDialogPersonalMessage"
+              defaults="Personal message (optional)"
+            />
+          </Label>
+          <Textarea
+            {...form.register("message")}
+            id="share-dialog-message"
+            maxLength={1000}
+            rows={3}
+            disabled={disabled}
+            aria-invalid={!!form.formState.errors.message}
+            aria-describedby={
+              form.formState.errors.message
+                ? "share-dialog-message-error"
+                : "share-dialog-message-hint"
+            }
+          />
+          <p
+            id="share-dialog-message-hint"
+            className="text-muted-foreground text-xs"
+          >
+            <Trans
+              i18nKey="shareDialogMessageHint"
+              defaults="Included in the email. Maximum 1000 characters."
+            />
+          </p>
+          {form.formState.errors.message ? (
+            <p
+              id="share-dialog-message-error"
+              className="text-destructive text-sm"
+            >
+              {messageError}
+            </p>
+          ) : null}
+        </div>
         <Button
           type="submit"
           variant="primary"
-          disabled={!isOpen}
+          className="self-end"
+          disabled={disabled}
           aria-describedby={isOpen ? undefined : "share-dialog-closed-reason"}
         >
           <Trans i18nKey="shareDialogSendInvite" defaults="Send invite" />
