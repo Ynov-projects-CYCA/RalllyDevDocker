@@ -1,38 +1,248 @@
 services:
-  rallly_db:
-    image: postgres:18-alpine
-    restart: always
+  # ============================================================================
+  # Reverse Proxy (Point d'entree unique - Traefik v3)
+  # ============================================================================
+  traefik:
+    image: traefik:v3.2
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
     ports:
-      - "5450:5432"
-    volumes:
-      - db-data:/var/lib/postgresql
+      - "${TRAEFIK_HTTP_PORT:-80}:80"
+      - "${TRAEFIK_HTTPS_PORT:-443}:443"
+      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
     environment:
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=rallly
+      - DOCKER_API_VERSION=1.44
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./docker/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik-acme:/acme
+    networks:
+      traefik-net:
+        aliases:
+          - auth.localhost
+          - rallly.localhost
+          - mail.localhost
+
+  # ============================================================================
+  # Serveur SMTP de Laboratoire (Mailpit)
+  # ============================================================================
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: mailpit
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    networks:
+      - traefik-net
+      - app-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mailpit.rule=Host(`${MAILPIT_HOSTNAME:-mail.localhost}`)"
+      - "traefik.http.routers.mailpit.entrypoints=web"
+      - "traefik.http.services.mailpit.loadbalancer.server.port=8025"
+
+  # ============================================================================
+  # Authentik - Dependances Internes (BDD et Cache)
+  # ============================================================================
+  authentik-postgresql:
+    image: postgres:16-alpine
+    container_name: authentik-postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      POSTGRES_PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_secure_db_pass_123}
+    volumes:
+      - authentik-db-data:/var/lib/postgresql/data
+    networks:
+      - authentik-internal-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 10s
+      interval: 10s
       timeout: 5s
       retries: 5
 
-  rallly_selfhosted:
+  authentik-redis:
+    image: redis:7-alpine
+    container_name: authentik-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_pass_123}
+    environment:
+      AUTHENTIK_REDIS_PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_pass_123}
+    volumes:
+      - authentik-redis-data:/data
+    networks:
+      - authentik-internal-net
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a $$AUTHENTIK_REDIS_PASSWORD ping | grep PONG"]
+      start_period: 5s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Authentik - Serveur & Worker
+  # ============================================================================
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2024.8.3
+    container_name: authentik-server
+    restart: unless-stopped
+    command: server
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-insecure_authentik_dev_key_replace_in_prod_123456789}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_secure_db_pass_123}
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_pass_123}
+      AUTHENTIK_EMAIL__HOST: mailpit
+      AUTHENTIK_EMAIL__PORT: 1025
+      AUTHENTIK_EMAIL__USE_TLS: "false"
+      AUTHENTIK_EMAIL__FROM: authentik@localhost
+    volumes:
+      - authentik-media:/media
+      - authentik-templates:/templates
+    networks:
+      - authentik-internal-net
+      - app-net
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authentik.rule=Host(`${AUTHENTIK_HOSTNAME:-auth.localhost}`)"
+      - "traefik.http.routers.authentik.entrypoints=web"
+      - "traefik.http.services.authentik.loadbalancer.server.port=9000"
+
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2024.8.3
+    container_name: authentik-worker
+    restart: unless-stopped
+    command: worker
+    depends_on:
+      authentik-postgresql:
+        condition: service_healthy
+      authentik-redis:
+        condition: service_healthy
+    environment:
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:-insecure_authentik_dev_key_replace_in_prod_123456789}
+      AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+      AUTHENTIK_POSTGRESQL__NAME: ${AUTHENTIK_POSTGRES_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${AUTHENTIK_POSTGRES_PASSWORD:-authentik_secure_db_pass_123}
+      AUTHENTIK_REDIS__HOST: authentik-redis
+      AUTHENTIK_REDIS__PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_pass_123}
+      AUTHENTIK_EMAIL__HOST: mailpit
+      AUTHENTIK_EMAIL__PORT: 1025
+      AUTHENTIK_EMAIL__USE_TLS: "false"
+      AUTHENTIK_EMAIL__FROM: authentik@localhost
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - authentik-media:/media
+      - authentik-templates:/templates
+    networks:
+      - authentik-internal-net
+      - app-net
+
+  # ============================================================================
+  # Rallly - Base de Donnees Isolee
+  # ============================================================================
+  rallly-postgresql:
+    image: postgres:16-alpine
+    container_name: rallly-postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${RALLLY_POSTGRES_DB:-rallly}
+      POSTGRES_USER: ${RALLLY_POSTGRES_USER:-rallly}
+      POSTGRES_PASSWORD: ${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}
+    ports:
+      - "${RALLLY_POSTGRES_EXPOSED_PORT:-5450}:5432"
+    volumes:
+      - rallly-db-data:/var/lib/postgresql/data
+    networks:
+      - rallly-internal-net
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================================
+  # Rallly - Application Web (Build Local depuis la racine)
+  # ============================================================================
+  rallly-web:
     build:
-      args:
-        - SELF_HOSTED=true
       context: .
       dockerfile: ./apps/web/Dockerfile
-    restart: always
+      args:
+        - SELF_HOSTED=true
+    container_name: rallly-web
+    restart: unless-stopped
     depends_on:
-      rallly_db:
+      rallly-postgresql:
         condition: service_healthy
-    ports:
-      - 3000:3000
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@rallly_db/rallly
-    env_file:
-      - path: apps/web/.env
-        required: false
+      SECRET_PASSWORD: ${RALLLY_SECRET_PASSWORD:-super_secret_password_for_rallly_session_min_32_chars}
+      DATABASE_URL: postgres://${RALLLY_POSTGRES_USER:-rallly}:${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}@rallly-postgresql:5432/${RALLLY_POSTGRES_DB:-rallly}
+      NEXT_PUBLIC_BASE_URL: http://${RALLLY_HOSTNAME:-rallly.localhost}
+      SUPPORT_EMAIL: ${RALLLY_SUPPORT_EMAIL:-support@example.com}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_SECURE: "false"
+      EMAIL_LOGIN_ENABLED: "false"
+      # Federation OIDC avec Authentik
+      OIDC_NAME: ${OIDC_NAME:-Authentik}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-http://auth.localhost/application/o/rallly/.well-known/openid-configuration}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-rallly-client-id}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-rallly-client-secret}
+    networks:
+      - rallly-internal-net
+      - app-net
+      - traefik-net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.rallly.rule=Host(`${RALLLY_HOSTNAME:-rallly.localhost}`)"
+      - "traefik.http.routers.rallly.entrypoints=web"
+      - "traefik.http.services.rallly.loadbalancer.server.port=3000"
 
+# ==============================================================================
+# Reseaux Cloisonnes (Durcissement et Isolation)
+# ==============================================================================
+networks:
+  traefik-net:
+    driver: bridge
+  app-net:
+    driver: bridge
+  authentik-internal-net:
+    driver: bridge
+    internal: true
+  rallly-internal-net:
+    driver: bridge
+
+# ==============================================================================
+# Volumes Persistants
+# ==============================================================================
 volumes:
-  db-data:
-    driver: local
+  traefik-acme:
+  authentik-db-data:
+  authentik-redis-data:
+  authentik-media:
+  authentik-templates:
+  rallly-db-data:
