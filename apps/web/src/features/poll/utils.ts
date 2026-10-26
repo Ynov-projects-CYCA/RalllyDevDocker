@@ -4,6 +4,47 @@ import { isProConferencingProvider } from "@/features/conferencing/utils";
 import type { VoteType } from "@/features/poll/constants";
 import type { PollComment, PollParticipant } from "@/features/poll/types";
 import type { SpaceTier } from "@/features/space/schema";
+import { toISODate } from "@/lib/datetime/utils";
+import { wallTimeToInstant } from "@/lib/datetime/wall-time";
+
+/**
+ * An option expires at its start, including the exact instant of that start.
+ * Duration only distinguishes date-only options (0) from timed options; the
+ * end of the option never determines whether voting has expired.
+ *
+ * Zoned times are already absolute instants. Date-only options are floating
+ * calendar dates encoded as UTC midnight: interpret that date as midnight in
+ * `floatingTimeZone`, so today's option expires as soon as that day begins.
+ * Legacy timed options without a poll zone also store UTC-encoded wall times;
+ * interpret their clock fields in `floatingTimeZone` before comparing.
+ *
+ * Callers must supply the same explicit floating zone on client and server;
+ * neither the host's system zone nor a display-zone override is inferred here.
+ * Uses the existing wall-time converter's DST disambiguation rules.
+ */
+export function isPollOptionExpired({
+  option,
+  pollTimeZone,
+  floatingTimeZone,
+  now = new Date(),
+}: {
+  option: { startTime: Date; duration: number };
+  pollTimeZone: string | null;
+  floatingTimeZone: string;
+  now?: Date;
+}): boolean {
+  const start =
+    option.duration === 0
+      ? wallTimeToInstant(toISODate(option.startTime), floatingTimeZone)
+      : pollTimeZone
+        ? option.startTime
+        : wallTimeToInstant(
+            option.startTime.toISOString().slice(0, 23),
+            floatingTimeZone,
+          );
+
+  return start.getTime() <= now.getTime();
+}
 
 // Alphanumeric only: url safe with no linkifier edge cases. 32 chars is the
 // floor documented on Participant.token and PollInvite.token.

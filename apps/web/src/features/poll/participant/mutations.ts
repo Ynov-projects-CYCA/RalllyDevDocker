@@ -9,11 +9,19 @@ import {
   findPendingPollInvite,
 } from "@/features/poll/invite/mutations";
 import { revalidatePollPages } from "@/features/poll/mutations";
-import { generateAccessToken } from "@/features/poll/utils";
+import {
+  generateAccessToken,
+  isPollOptionExpired,
+} from "@/features/poll/utils";
 import type { SpaceTier } from "@/features/space/schema";
 import { scheduleWebhookDispatch } from "@/features/webhook/mutations";
 
-type WriteRefusal = "notFound" | "closed" | "full" | "tentativeVotesNotAllowed";
+type WriteRefusal =
+  | "notFound"
+  | "closed"
+  | "full"
+  | "tentativeVotesNotAllowed"
+  | "expiredOptions";
 
 class WriteRefusedError extends Error {
   constructor(public readonly reason: WriteRefusal) {
@@ -30,15 +38,16 @@ class WriteRefusedError extends Error {
  * transaction: their writers do not take this lock, and a response that
  * lands during a ban is removed with the poll anyway.
  */
-async function lockOpenPoll(
-  tx: Prisma.TransactionClient,
-  pollId: string,
-  votes: { type: VoteType }[],
-) {
+async function lockOpenPoll(tx: Prisma.TransactionClient, pollId: string) {
   const [poll] = await tx.$queryRaw<
-    { status: string; deleted: boolean; allow_tentative_votes: boolean }[]
+    {
+      status: string;
+      deleted: boolean;
+      allow_tentative_votes: boolean;
+      time_zone: string | null;
+    }[]
   >`
-    SELECT status, deleted, allow_tentative_votes
+    SELECT status, deleted, allow_tentative_votes, time_zone
     FROM polls WHERE id = ${pollId} FOR UPDATE
   `;
 
@@ -53,12 +62,7 @@ async function lockOpenPoll(
     throw new WriteRefusedError("closed");
   }
 
-  if (
-    !poll.allow_tentative_votes &&
-    votes.some((vote) => vote.type === "ifNeedBe")
-  ) {
-    throw new WriteRefusedError("tentativeVotesNotAllowed");
-  }
+  return poll;
 }
 
 /**
@@ -81,15 +85,71 @@ async function assertParticipantInPoll(
   }
 }
 
-async function listValidOptionIds(
+/**
+ * Called under the poll lock, shared by option edits and participant writes.
+ * Dates and history come from the transaction, never from the request. Read
+ * the server clock after waiting for the lock and loading the current rows.
+ * Floating dates/times use UTC, independent of caller-controlled zone fields.
+ * Expired rows are immutable: omitted/negative input leaves history intact;
+ * a positive type must already be stored on this participant for this option.
+ */
+async function prepareVoteWrite(
   tx: Prisma.TransactionClient,
   pollId: string,
+  poll: { time_zone: string | null; allow_tentative_votes: boolean },
+  votes: { optionId: string; type: VoteType }[],
+  participantId?: string,
 ) {
   const options = await tx.option.findMany({
     where: { pollId },
-    select: { id: true },
+    select: { id: true, startTime: true, duration: true },
   });
-  return new Set(options.map((option) => option.id));
+  const history = participantId
+    ? await tx.vote.findMany({
+        where: { participantId, pollId },
+        select: { optionId: true, type: true },
+      })
+    : [];
+  const now = new Date();
+  const futureOptionIds = new Set(
+    options
+      .filter(
+        (option) =>
+          !isPollOptionExpired({
+            option,
+            pollTimeZone: poll.time_zone,
+            floatingTimeZone: "UTC",
+            now,
+          }),
+      )
+      .map((option) => option.id),
+  );
+  const validOptionIds = new Set(options.map((option) => option.id));
+  const validVotes = votes.filter(({ optionId }) =>
+    validOptionIds.has(optionId),
+  );
+
+  for (const vote of validVotes) {
+    if (
+      !futureOptionIds.has(vote.optionId) &&
+      vote.type !== "no" &&
+      !history.some(
+        (old) => old.optionId === vote.optionId && old.type === vote.type,
+      )
+    ) {
+      throw new WriteRefusedError("expiredOptions");
+    }
+  }
+  const writableVotes = validVotes.filter(({ optionId }) =>
+    futureOptionIds.has(optionId),
+  );
+  if (
+    !poll.allow_tentative_votes &&
+    writableVotes.some((vote) => vote.type === "ifNeedBe")
+  ) {
+    throw new WriteRefusedError("tentativeVotesNotAllowed");
+  }
+  return { writableVotes, futureOptionIds: [...futureOptionIds] };
 }
 
 function refusal(error: unknown) {
@@ -164,12 +224,7 @@ export async function addParticipant({
 
   try {
     const result = await prisma.$transaction(async (tx) => {
-      const validOptionIds = await listValidOptionIds(tx, pollId);
-      const validVotes = votes.filter(({ optionId }) =>
-        validOptionIds.has(optionId),
-      );
-
-      await lockOpenPoll(tx, pollId, validVotes);
+      const lockedPoll = await lockOpenPoll(tx, pollId);
 
       // Counted under the lock so two responses cannot both pass at the cap.
       const participantCount = await tx.participant.count({
@@ -187,6 +242,13 @@ export async function addParticipant({
         : null;
       const editToken = invite?.token ?? generateAccessToken();
 
+      const { writableVotes } = await prepareVoteWrite(
+        tx,
+        pollId,
+        lockedPoll,
+        votes,
+      );
+
       const participant = await tx.participant.create({
         data: {
           pollId,
@@ -199,7 +261,7 @@ export async function addParticipant({
           locale,
           votes: {
             createMany: {
-              data: validVotes.map(({ optionId, type }) => ({
+              data: writableVotes.map(({ optionId, type }) => ({
                 pollId,
                 optionId,
                 type,
@@ -290,18 +352,24 @@ export async function updateParticipantVotes({
 }): Promise<EditParticipantResult> {
   try {
     await prisma.$transaction(async (tx) => {
-      await lockOpenPoll(tx, pollId, votes);
+      const poll = await lockOpenPoll(tx, pollId);
       await assertParticipantInPoll(tx, participantId, pollId);
-
-      await tx.vote.deleteMany({ where: { participantId } });
-
-      const validOptionIds = await listValidOptionIds(tx, pollId);
-      const validVotes = votes.filter(({ optionId }) =>
-        validOptionIds.has(optionId),
+      const { writableVotes, futureOptionIds } = await prepareVoteWrite(
+        tx,
+        pollId,
+        poll,
+        votes,
+        participantId,
       );
 
+      // Replace only future votes. Historical rows retain ids and timestamps,
+      // even when an older client omitted them from its full-form submission.
+      await tx.vote.deleteMany({
+        where: { participantId, optionId: { in: futureOptionIds } },
+      });
+
       await tx.vote.createMany({
-        data: validVotes.map(({ optionId, type }) => ({
+        data: writableVotes.map(({ optionId, type }) => ({
           optionId,
           type,
           pollId,
@@ -351,7 +419,7 @@ export async function renameParticipant({
 }): Promise<EditParticipantResult> {
   try {
     await prisma.$transaction(async (tx) => {
-      await lockOpenPoll(tx, pollId, []);
+      await lockOpenPoll(tx, pollId);
       await assertParticipantInPoll(tx, participantId, pollId);
 
       await tx.participant.update({
@@ -391,7 +459,7 @@ export async function deleteParticipant({
 }): Promise<EditParticipantResult> {
   try {
     await prisma.$transaction(async (tx) => {
-      await lockOpenPoll(tx, pollId, []);
+      await lockOpenPoll(tx, pollId);
 
       // Snapshot before the delete: the activity payload is the historical
       // record of the removed response, so it carries the name and votes.

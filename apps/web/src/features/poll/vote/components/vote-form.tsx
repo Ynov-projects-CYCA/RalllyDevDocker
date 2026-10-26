@@ -12,6 +12,10 @@ import {
   useUpdateParticipantVotes,
 } from "@/features/poll/components/mutations";
 import { NewParticipantForm } from "@/features/poll/components/new-participant-modal";
+import {
+  prepareVotesForSubmission,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import type { VoteType } from "@/features/poll/constants";
 import { getVoteTypes } from "@/features/poll/constants";
 import type { VotePageView, VoteResult } from "@/features/poll/vote/types";
@@ -44,12 +48,14 @@ export const useVoteForm = () => useFormContext<VoteFormValues>();
  */
 export function useSetVote() {
   const form = useVoteForm();
+  const { isExpired } = useOptionExpiration();
 
   return React.useCallback(
     (
       optionId: string,
       type: VoteType | ((current: VoteType | undefined) => VoteType),
     ) => {
+      if (isExpired(optionId)) return;
       const next = [...form.getValues("votes")];
       const at = next.findIndex((vote) => vote?.optionId === optionId);
       const resolved =
@@ -64,7 +70,7 @@ export function useSetVote() {
       }
       form.setValue("votes", next, { shouldDirty: true });
     },
-    [form],
+    [form, isExpired],
   );
 }
 
@@ -220,6 +226,7 @@ export function VoteForm({
 }) {
   const { t } = useTranslation();
   const updateVotes = useUpdateParticipantVotes();
+  const { isExpired } = useOptionExpiration();
   const token = useEditToken();
   const [isNewParticipantOpen, setIsNewParticipantOpen] = React.useState(false);
 
@@ -253,11 +260,44 @@ export function VoteForm({
     });
   }, [responseId, form]);
 
+  const getVotes = () => {
+    const options = results.map((r) => ({ id: r.optionId }));
+    const result = prepareVotesForSubmission(
+      options,
+      form.getValues("votes"),
+      response?.votes ?? [],
+      isExpired,
+    );
+    if (result.changed || !result.hasFuture) {
+      form.setValue(
+        "votes",
+        options.map(({ id }) => ({
+          optionId: id,
+          type: result.votes.find((v) => v.optionId === id)?.type,
+        })),
+      );
+      toast.error(
+        !result.hasFuture
+          ? t("pollNoFutureOptions", {
+              defaultValue: "No time slots are available for voting.",
+            })
+          : t("pollOptionsExpiredReview", {
+              defaultValue:
+                "Some time slots have expired. Their changes were removed. Please review your response before saving.",
+            }),
+      );
+      return null;
+    }
+    return result.votes;
+  };
+
   return (
     <FormProvider {...form}>
       <form
         id="vote-form"
-        onSubmit={form.handleSubmit(async (data) => {
+        onSubmit={form.handleSubmit(async () => {
+          const votes = getVotes();
+          if (!votes) return;
           if (!response) {
             // Plain properties, not groups, to match poll_response_submit:
             // guest events are personless and PostHog drops their groups.
@@ -272,20 +312,25 @@ export function VoteForm({
 
           const result = await updateVotes.execute({
             participantId: response.participantId,
-            votes: normalizeVotes(optionIds, data.votes),
+            votes,
             token,
           });
 
           if (!result.ok) {
             // Stay in edit mode so the selection is not lost.
             toast.error(
-              result.reason === "closed"
-                ? t("pollClosedDescription", {
-                    defaultValue: "No more responses are being accepted.",
+              result.reason === "expiredOptions"
+                ? t("pollOptionsExpired", {
+                    defaultValue:
+                      "Some time slots have expired. Please review your response before saving.",
                   })
-                : t("actionErrorInternalServerError", {
-                    defaultValue: "An internal server error occurred",
-                  }),
+                : result.reason === "closed"
+                  ? t("pollClosedDescription", {
+                      defaultValue: "No more responses are being accepted.",
+                    })
+                  : t("actionErrorInternalServerError", {
+                      defaultValue: "An internal server error occurred",
+                    }),
             );
             return;
           }
@@ -299,6 +344,7 @@ export function VoteForm({
       >
         <DialogContent size="sm">
           <NewParticipantForm
+            getVotes={getVotes}
             pollId={pollId}
             requireParticipantEmail={requireParticipantEmail}
             votes={normalizeVotes(optionIds, form.watch("votes"))}

@@ -2,6 +2,7 @@ import type { VoteType } from "@rallly/database";
 import type * as React from "react";
 import { Controller } from "react-hook-form";
 import { useParticipants } from "@/features/poll/client";
+import { useOptionExpiration } from "@/features/poll/components/option-expiration";
 import { usePoll } from "@/features/poll/components/poll-context";
 import { useVotingForm } from "@/features/poll/components/voting-form";
 import type { ParsedDateTimeOpton } from "@/lib/utils/date-time-utils";
@@ -21,6 +22,7 @@ const PollOptions: React.FunctionComponent<PollOptions> = ({
   selectedParticipantId,
 }) => {
   const { control } = useVotingForm();
+  const { isExpired } = useOptionExpiration();
   const { getScore, getVote, optionIds, poll } = usePoll();
   const { participants: allParticipants } = useParticipants();
   const selectedParticipant = selectedParticipantId
@@ -47,7 +49,7 @@ const PollOptions: React.FunctionComponent<PollOptions> = ({
                     : field.value[index]?.type;
 
                 const handleChange = (newVote: VoteType) => {
-                  if (!editable) {
+                  if (!editable || isExpired(option.optionId)) {
                     return;
                   }
                   const newValue = [...field.value];
@@ -72,6 +74,7 @@ const PollOptions: React.FunctionComponent<PollOptions> = ({
                         startTime={option.startTime}
                         endTime={option.endTime}
                         duration={option.duration}
+                        expired={isExpired(option.optionId)}
                         editable={editable}
                         selectedParticipantId={selectedParticipant?.id}
                       />
@@ -89,6 +92,7 @@ const PollOptions: React.FunctionComponent<PollOptions> = ({
                         dow={option.dow}
                         day={option.day}
                         month={option.month}
+                        expired={isExpired(option.optionId)}
                         editable={editable}
                         selectedParticipantId={selectedParticipant?.id}
                       />

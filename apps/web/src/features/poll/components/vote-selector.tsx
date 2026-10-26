@@ -9,6 +9,7 @@ import VoteIcon from "./vote-icon";
 
 export interface VoteSelectorProps {
   value?: VoteType;
+  disabled?: boolean;
   /**
    * Accessible description of the option being voted on (e.g. "Tue 30 Jun
    * 2026, 1:00 PM – 2:00 PM") so screen readers can tie the vote to its
@@ -44,6 +45,7 @@ export const VoteSelector = React.forwardRef<
 >(function VoteSelector(
   {
     value,
+    disabled = false,
     optionLabel,
     onChange,
     onFocus,
@@ -73,7 +75,16 @@ export const VoteSelector = React.forwardRef<
     <button
       data-testid="vote-selector"
       type="button"
-      aria-label={optionLabel ? `${optionLabel}, ${voteLabel}` : voteLabel}
+      disabled={disabled}
+      aria-label={[
+        optionLabel,
+        voteLabel,
+        disabled
+          ? t("pollOptionExpired", { defaultValue: "Time slot expired" })
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(", ")}
       onFocus={onFocus}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
@@ -88,9 +99,11 @@ export const VoteSelector = React.forwardRef<
         // pointerdown and pointerup: the release lands on the parent and the
         // click never reaches this button.
         "rounded-[min(var(--radius-md),12px)] backdrop-blur-none not-aria-[haspopup]:active:scale-none",
+        disabled && "cursor-not-allowed opacity-50",
         className,
       )}
       onClick={() => {
+        if (disabled) return;
         onChange?.(toggleVote(value, allowTentativeVotes));
       }}
       ref={ref}

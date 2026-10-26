@@ -1,15 +1,154 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   filterCommentsForViewer,
   filterParticipantsByVote,
   getChosenOptionRank,
   getFinalizePlanGate,
   getFinalizeTiming,
+  isPollOptionExpired,
   maskParticipantsForViewer,
   rankOptionsByPopularity,
   summarizeNotifySelection,
   toAvailabilitySpans,
 } from "./utils";
+
+describe("isPollOptionExpired", () => {
+  const now = new Date("2026-10-26T12:00:00Z");
+  const timedOption = (startTime: string) => ({
+    startTime: new Date(startTime),
+    duration: 60,
+  });
+  const context = {
+    pollTimeZone: "Europe/Paris",
+    floatingTimeZone: "Europe/Paris",
+    now,
+  };
+
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    1, 60, 1440,
+  ])("expires at the start regardless of duration %s", (duration) => {
+    const option = { startTime: new Date(now.getTime()), duration };
+    expect(isPollOptionExpired({ ...context, option })).toBe(true);
+    expect(option.startTime.getTime()).toBe(now.getTime());
+    expect(context.now.getTime()).toBe(now.getTime());
+  });
+
+  it.each([
+    ["yesterday", "2026-10-25T12:00:00Z", true],
+    ["tomorrow", "2026-10-27T12:00:00Z", false],
+    ["earlier today", "2026-10-26T11:30:00Z", true],
+    ["later today", "2026-10-26T12:30:00Z", false],
+    ["one millisecond before now", "2026-10-26T11:59:59.999Z", true],
+    ["exactly now", "2026-10-26T12:00:00Z", true],
+    ["one millisecond after now", "2026-10-26T12:00:00.001Z", false],
+  ])("classifies %s by its start", (_label, start, expected) => {
+    expect(
+      isPollOptionExpired({ ...context, option: timedOption(start) }),
+    ).toBe(expected);
+  });
+
+  it.each([
+    ["2026-10-26T13:00:00+01:00", "2026-10-26T08:00:00-04:00", true],
+    ["2026-10-26T14:00:00+01:00", "2026-10-26T09:00:00-04:00", false],
+  ])("classifies equivalent offset representations equally: %s", (a, b, expected) => {
+    for (const start of [a, b]) {
+      expect(
+        isPollOptionExpired({ ...context, option: timedOption(start) }),
+      ).toBe(expected);
+    }
+  });
+
+  it("does not reinterpret a fixed instant in the floating zone", () => {
+    for (const floatingTimeZone of ["Pacific/Honolulu", "Asia/Tokyo"]) {
+      expect(
+        isPollOptionExpired({
+          ...context,
+          floatingTimeZone,
+          option: timedOption("2026-10-26T12:00:00Z"),
+        }),
+      ).toBe(true);
+    }
+  });
+
+  it("uses the current clock when now is omitted", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    expect(
+      isPollOptionExpired({
+        pollTimeZone: "Europe/Paris",
+        floatingTimeZone: "Europe/Paris",
+        option: timedOption("2026-10-26T12:00:00Z"),
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["2026-10-25", true],
+    ["2026-10-26", true],
+    ["2026-10-27", false],
+  ])("classifies date-only %s at local midnight", (date, expected) => {
+    expect(
+      isPollOptionExpired({
+        ...context,
+        pollTimeZone: null,
+        option: { startTime: new Date(`${date}T00:00:00Z`), duration: 0 },
+      }),
+    ).toBe(expected);
+  });
+
+  it.each([
+    "Pacific/Honolulu",
+    "Asia/Tokyo",
+  ])("expires a date-only option exactly at midnight in %s", (floatingTimeZone) => {
+    const midnight =
+      floatingTimeZone === "Pacific/Honolulu"
+        ? "2026-10-26T10:00:00Z"
+        : "2026-10-25T15:00:00Z";
+    const option = { startTime: new Date("2026-10-26T00:00:00Z"), duration: 0 };
+    for (const [offset, expected] of [
+      [-1, false],
+      [0, true],
+      [1, true],
+    ] as const) {
+      expect(
+        isPollOptionExpired({
+          option,
+          pollTimeZone: null,
+          floatingTimeZone,
+          now: new Date(Date.parse(midnight) + offset),
+        }),
+      ).toBe(expected);
+    }
+  });
+
+  it("resolves legacy floating times in the explicit zone", () => {
+    const option = timedOption("2026-10-26T12:00:00Z");
+    expect(
+      isPollOptionExpired({ ...context, option, pollTimeZone: null }),
+    ).toBe(true); // 12:00 in Paris is 11:00Z.
+    expect(
+      isPollOptionExpired({
+        ...context,
+        option,
+        pollTimeZone: null,
+        floatingTimeZone: "America/New_York",
+      }),
+    ).toBe(false); // 12:00 in New York is 16:00Z.
+  });
+
+  it("uses the existing DST rule for a repeated floating hour", () => {
+    expect(
+      isPollOptionExpired({
+        ...context,
+        option: timedOption("2026-10-25T02:30:00Z"),
+        pollTimeZone: null,
+        now: new Date("2026-10-25T00:30:00Z"),
+      }),
+    ).toBe(true); // First occurrence of 02:30 in Paris.
+  });
+});
 
 const participant = (
   id: string,

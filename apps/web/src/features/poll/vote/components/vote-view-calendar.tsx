@@ -3,6 +3,10 @@ import { cn } from "@rallly/ui";
 import type { MonthGridDayProps } from "@rallly/ui/month-grid";
 import { MonthGrid } from "@rallly/ui/month-grid";
 import * as React from "react";
+import {
+  ExpiredOptionLabel,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import VoteIcon from "@/features/poll/components/vote-icon";
 import type { VoteType } from "@/features/poll/constants";
 import {
@@ -78,6 +82,7 @@ function OptionDayContent({
   const ctx = React.useContext(DayContextValue);
   const { value, isEditing } = useVote(result.optionId);
   const savedVote = ctx?.savedVotes.get(result.optionId);
+  const { isExpired } = useOptionExpiration();
   const shown = isEditing ? value : savedVote;
 
   return (
@@ -90,6 +95,7 @@ function OptionDayContent({
             without the cell repeating it. */}
         {shown ? <VoteIcon type={shown} size="sm" /> : null}
       </span>
+      {isExpired(result.optionId) ? <ExpiredOptionLabel /> : null}
       <VoteScore
         optionId={result.optionId}
         score={result.score}
@@ -110,7 +116,10 @@ function OptionDayContent({
 function DayCell({ day, modifiers, className, ...props }: MonthGridDayProps) {
   const ctx = React.useContext(DayContextValue);
   const result = ctx?.byDate.get(toISODate(day.date));
-  const interactive = result !== undefined && (ctx?.canVote ?? false);
+  const { isExpired } = useOptionExpiration();
+  const expired = !!result && isExpired(result.optionId);
+  const interactive =
+    result !== undefined && (ctx?.canVote ?? false) && !expired;
 
   return (
     <button
@@ -122,9 +131,11 @@ function DayCell({ day, modifiers, className, ...props }: MonthGridDayProps) {
         interactive
           ? "cursor-pointer hover:brightness-[0.97] dark:hover:brightness-125"
           : "cursor-default text-muted-foreground",
+        expired && "bg-muted/40 opacity-60",
         className,
       )}
       {...props}
+      disabled={props.disabled || expired}
     >
       {result ? (
         <OptionDayContent result={result} dayNumber={props.children} />
@@ -136,6 +147,9 @@ function DayCell({ day, modifiers, className, ...props }: MonthGridDayProps) {
     </button>
   );
 }
+
+// Stable identity keeps DayPicker buttons mounted during clock refreshes.
+const renderVoteDay = (props: MonthGridDayProps) => <DayCell {...props} />;
 
 /**
  * The options as a month calendar, one cell per day. Days the poll does not
@@ -149,6 +163,7 @@ export function VoteViewCalendar({
   canVote,
 }: VoteViewProps) {
   const hydrated = useHydrated();
+  const { isExpired } = useOptionExpiration();
   const { locale } = useDateTimeConfig();
   const { t } = useTranslation();
 
@@ -200,14 +215,19 @@ export function VoteViewCalendar({
       const result = byDate.get(toISODate(date));
       // Read the mode at click time: DayPicker holds on to this handler, so
       // a captured value would go stale the moment the response is saved.
-      if (!result || !canVote || form.getValues("mode") === "view") {
+      if (
+        !result ||
+        isExpired(result.optionId) ||
+        !canVote ||
+        form.getValues("mode") === "view"
+      ) {
         return;
       }
       setVote(result.optionId, (current) =>
         nextVoteType(current, poll.allowTentativeVotes),
       );
     },
-    [byDate, canVote, form, setVote, poll.allowTentativeVotes],
+    [byDate, canVote, form, setVote, poll.allowTentativeVotes, isExpired],
   );
 
   const ctx = React.useMemo(
@@ -247,6 +267,10 @@ export function VoteViewCalendar({
           // All-day options are stored as UTC wall time, so the calendar
           // does its month maths in UTC; anything else shifts a day across
           // the boundary.
+          disabled={(date: Date) => {
+            const result = byDate.get(toISODate(date));
+            return !!result && isExpired(result.optionId);
+          }}
           timeZone="UTC"
           weekStartsOn={weekStart as 0 | 1 | 2 | 3 | 4 | 5 | 6}
           defaultMonth={first}
@@ -264,7 +288,7 @@ export function VoteViewCalendar({
             labelPrevious: () =>
               t("previousMonth", { defaultValue: "Go to the previous month" }),
           }}
-          renderDay={(dayProps) => <DayCell {...dayProps} />}
+          renderDay={renderVoteDay}
           className="min-h-0 flex-1 p-4"
         />
       </DayContextValue.Provider>
