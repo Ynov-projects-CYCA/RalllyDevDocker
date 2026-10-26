@@ -96,5 +96,6 @@
   "spaceInvite_content": "{inviterName} vous a invité à rejoindre l'espace {spaceName} en tant que {role}.",
   "spaceInvite_heading": "Vous êtes invité !",
   "spaceInvite_preview": "Vous êtes invité à rejoindre {spaceName}",
-  "spaceInvite_subject": "Vous êtes invité à rejoindre {spaceName}"
+  "spaceInvite_subject": "Vous êtes invité à rejoindre {spaceName}",
+  "pollInvite_greeting": "Bonjour"
 }

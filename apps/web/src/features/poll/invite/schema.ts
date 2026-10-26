@@ -5,6 +5,8 @@ export const sendPollInviteSchema = z.object({
   // Normalized before validation so "  Jessie@Example.com " matches the
   // citext unique index the same way the stored row does.
   email: z.string().trim().toLowerCase().pipe(z.email()),
+  recipientName: z.string().trim().min(1).max(100),
+  message: z.string().trim().max(1000).optional(),
 });
 
 export const recordPollInviteOpenSchema = z.object({
