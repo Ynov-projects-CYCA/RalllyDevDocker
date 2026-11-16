@@ -22,7 +22,7 @@ vi.mock("@/features/webhook/mutations", () => ({
 }));
 
 // Opt in so ordinary unit tests do not need a running PostgreSQL instance.
-// From apps/web: RUN_DATABASE_TESTS=1 pnpm exec dotenv -e .env -- vitest run src/features/poll/participant/mutations.database.test.ts
+// From apps/web: RUN_DATABASE_TESTS=1 pnpm exec dotenv -e .env.test -- vitest run src/features/poll/participant/mutations.database.test.ts
 describe.skipIf(process.env.RUN_DATABASE_TESTS !== "1")(
   "participant vote writes in PostgreSQL",
   () => {
@@ -289,6 +289,95 @@ describe.skipIf(process.env.RUN_DATABASE_TESTS !== "1")(
       expect(
         await edit(participant.id, [{ optionId: past, type: "yes" }]),
       ).toEqual({ ok: false, reason: "expiredOptions" });
+    });
+
+    it("refuses changing an expired yes into tentative without changing activity or timestamps", async () => {
+      const participant = await seedResponse([
+        { optionId: past, type: "yes" },
+        { optionId: future, type: "no" },
+      ]);
+      const before = await prisma.participant.findUniqueOrThrow({
+        where: { id: participant.id },
+        include: { votes: { orderBy: { id: "asc" } } },
+      });
+      expect(
+        await edit(participant.id, [
+          { optionId: past, type: "ifNeedBe" },
+          { optionId: future, type: "yes" },
+        ]),
+      ).toEqual({ ok: false, reason: "expiredOptions" });
+      expect(
+        await prisma.participant.findUniqueOrThrow({
+          where: { id: participant.id },
+          include: { votes: { orderBy: { id: "asc" } } },
+        }),
+      ).toEqual(before);
+      expect(await prisma.pollActivity.count({ where: { pollId } })).toBe(0);
+    });
+
+    it("preserves a vote that expired since the previous save while clearing omitted future votes", async () => {
+      vi.setSystemTime(now.getTime() - 1);
+      const result = await create([
+        { optionId: exact, type: "yes" },
+        { optionId: future, type: "ifNeedBe" },
+      ]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("Expected a saved response");
+      const history = await prisma.vote.findMany({
+        where: { participantId: result.participant.id, optionId: exact },
+      });
+      expect(history).toHaveLength(1);
+      vi.setSystemTime(now);
+      expect(await edit(result.participant.id, [])).toEqual({ ok: true });
+      expect(
+        await prisma.vote.findMany({
+          where: { participantId: result.participant.id },
+        }),
+      ).toEqual(history);
+      const activities = await prisma.pollActivity.findMany({
+        where: { pollId },
+        select: { type: true },
+      });
+      expect(activities.map(({ type }) => type).sort()).toEqual([
+        "response_created",
+        "response_updated",
+      ]);
+    });
+
+    it("does not create votes for options belonging to another poll", async () => {
+      const foreignPollId = `past-vote-foreign-${randomUUID()}`;
+      try {
+        const foreign = await prisma.poll.create({
+          data: {
+            id: foreignPollId,
+            title: "Another poll",
+            userId,
+            options: {
+              create: {
+                startTime: new Date("2026-10-27T12:00:00Z"),
+                duration: 60,
+              },
+            },
+          },
+          include: { options: true },
+        });
+        expect(
+          (
+            await create([
+              { optionId: foreign.options[0].id, type: "yes" },
+              { optionId: future, type: "yes" },
+            ])
+          ).ok,
+        ).toBe(true);
+        expect(
+          await prisma.vote.findMany({
+            where: { pollId },
+            select: { optionId: true, type: true },
+          }),
+        ).toEqual([{ optionId: future, type: "yes" }]);
+      } finally {
+        await prisma.poll.deleteMany({ where: { id: foreignPollId } });
+      }
     });
 
     it("preserves historical tentative votes when the setting is disabled, but refuses new future ones", async () => {

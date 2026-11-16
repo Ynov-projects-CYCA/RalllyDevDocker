@@ -96,6 +96,25 @@ describe("submission expiration guard", () => {
       votes: [],
     });
   });
+
+  it("ignores deleted options and tolerates incomplete drafts", () => {
+    expect(
+      prepareVotesForSubmission(
+        options,
+        [
+          undefined,
+          { optionId: "deleted", type: "yes" },
+          { optionId: "future" },
+        ],
+        [{ optionId: "deleted", type: "yes" }],
+        expired,
+      ),
+    ).toEqual({
+      changed: false,
+      hasFuture: true,
+      votes: [{ optionId: "future", type: "no" }],
+    });
+  });
 });
 
 function Controls({ onChange }: { onChange: () => void }) {
@@ -206,5 +225,18 @@ describe("live expired controls", () => {
     expect(onChange).not.toHaveBeenCalled();
     fireEvent(window, new Event("focus"));
     expect(screen.getByRole("button", { name: /Desktop/ })).toBeDisabled();
+  });
+
+  it("refreshes after returning to a background tab and announces all options expired", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(start.getTime() - 1);
+    renderControls(vi.fn());
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    vi.setSystemTime(start);
+    fireEvent(document, new Event("visibilitychange"));
+    expect(screen.getByRole("button", { name: /Desktop/ })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No time slots are available for voting.",
+    );
   });
 });

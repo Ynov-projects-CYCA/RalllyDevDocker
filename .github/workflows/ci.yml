@@ -203,6 +203,12 @@ jobs:
       - name: Setup database
         run: pnpm db:deploy
 
+      - name: Test participant vote transactions in PostgreSQL
+        if: matrix.shard == 1
+        run: pnpm --filter @rallly/web exec vitest run src/features/poll/participant/mutations.database.test.ts
+        env:
+          RUN_DATABASE_TESTS: "1"
+
       - name: Run tests
         # Run directly, not via turbo, so the job env reaches the test process.
         run: pnpm --filter @rallly/web test:integration --shard=${{ matrix.shard }}/${{ strategy.job-total }}

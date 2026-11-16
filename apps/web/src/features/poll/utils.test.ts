@@ -148,6 +148,43 @@ describe("isPollOptionExpired", () => {
       }),
     ).toBe(true); // First occurrence of 02:30 in Paris.
   });
+
+  it.each([
+    ["spring gap", "2026-03-29T02:30:00Z", "2026-03-29T01:30:00Z"],
+    ["autumn overlap", "2026-10-25T02:30:00Z", "2026-10-25T00:30:00Z"],
+  ])("keeps the millisecond boundary through the %s", (_label, wallTime, instant) => {
+    for (const [offset, expected] of [
+      [-1, false],
+      [0, true],
+      [1, true],
+    ] as const) {
+      expect(
+        isPollOptionExpired({
+          option: timedOption(wallTime),
+          pollTimeZone: null,
+          floatingTimeZone: "Europe/Paris",
+          now: new Date(Date.parse(instant) + offset),
+        }),
+      ).toBe(expected);
+    }
+  });
+
+  it("uses the floating zone for date-only options even when the poll has a zone", () => {
+    const option = { startTime: new Date("2026-10-26T00:00:00Z"), duration: 0 };
+    for (const [offset, expected] of [
+      [-1, false],
+      [0, true],
+    ] as const) {
+      expect(
+        isPollOptionExpired({
+          option,
+          pollTimeZone: "America/New_York",
+          floatingTimeZone: "UTC",
+          now: new Date(option.startTime.getTime() + offset),
+        }),
+      ).toBe(expected);
+    }
+  });
 });
 
 const participant = (

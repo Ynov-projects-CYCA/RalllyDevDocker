@@ -72,6 +72,35 @@ async function openResponse(page: Page, path: string) {
 }
 
 for (const suffix of ["", "/vote"]) {
+  test(`all options expired ${suffix || "/invite"} prevents a new response`, async ({
+    page,
+  }) => {
+    await prisma.option.updateMany({
+      where: { pollId },
+      data: { startTime: fromNow({ days: -1 }) },
+    });
+    await page.goto(`/invite/${pollId}${suffix}`);
+    await expect(
+      page.getByText("No time slots are available for voting."),
+    ).toBeVisible();
+    const controls = page.getByTestId("vote-selector");
+    await expect(controls).toHaveCount(4);
+    for (const control of await controls.all()) {
+      if ((await control.getAttribute("role")) === "radiogroup") {
+        await expect(control).toHaveAttribute("aria-disabled", "true");
+      } else {
+        await expect(control).toBeDisabled();
+      }
+    }
+    await expect(
+      page.getByRole("button", { name: "Continue", exact: true }),
+    ).toBeDisabled();
+    // Decline submits an all-no draft through the same expiration guard.
+    await page.getByRole("button", { name: "Decline", exact: true }).click();
+    await expect(page.getByPlaceholder("Jessie Smith")).toHaveCount(0);
+    expect(await prisma.participant.count({ where: { pollId } })).toBe(0);
+  });
+
   for (const width of [375, 1280]) {
     test(`anonymous mixed poll ${suffix || "/invite"} at ${width}px`, async ({
       page,
