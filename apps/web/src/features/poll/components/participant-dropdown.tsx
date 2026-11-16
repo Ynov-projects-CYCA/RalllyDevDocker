@@ -70,6 +70,9 @@ export const ParticipantDropdown = ({
     React.useState(false);
   const [isDeleteParticipantModalVisible, setIsDeleteParticipantModalVisible] =
     React.useState(false);
+  const poll = usePoll();
+  const isOAuthLocked =
+    (poll?.oidcEnabled ?? false) && Boolean(participant.userId);
 
   return (
     <>
@@ -97,7 +100,7 @@ export const ParticipantDropdown = ({
             <PencilIcon />
             <Trans i18nKey="editVotes" defaults="Edit votes" />
           </DropdownMenuItem>
-          {!participant.userId ? (
+          {!isOAuthLocked ? (
             <DropdownMenuItem onClick={() => setIsChangeNameModalVisible(true)}>
               <TagIcon />
               <Trans i18nKey="changeName" defaults="Change name" />

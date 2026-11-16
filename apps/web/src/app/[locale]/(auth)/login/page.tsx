@@ -81,8 +81,6 @@ export default async function LoginPage(props: {
   const isLastUsed = (method: string) =>
     loginMethodCount > 1 && lastLoginMethod === method;
 
-  const hasError = !!searchParams?.error;
-
   const shouldAutoSignIn = false;
   /**
    * If there is only one login method available, we should automatically redirect to the login page.

@@ -196,7 +196,9 @@ export const addParticipantAction = anyUserActionClient
     const { pollId, votes, name, email, note, timeZone, token } = parsedInput;
 
     const isOidcConfigured = Boolean(
-      env.OIDC_DISCOVERY_URL && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET,
+      process.env.OIDC_DISCOVERY_URL &&
+        process.env.OIDC_CLIENT_ID &&
+        process.env.OIDC_CLIENT_SECRET,
     );
 
     const authenticatedUser = await loadOptionalUser();
@@ -375,7 +377,9 @@ export const renameParticipantAction = optionalUserActionClient
     const { participant, actor } = authorization;
 
     const isOidcConfigured = Boolean(
-      env.OIDC_DISCOVERY_URL && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET,
+      process.env.OIDC_DISCOVERY_URL &&
+        process.env.OIDC_CLIENT_ID &&
+        process.env.OIDC_CLIENT_SECRET,
     );
 
     if (isOidcConfigured && participant.userId) {

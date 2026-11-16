@@ -3,7 +3,6 @@ import "server-only";
 import type { PollStatus, Prisma, VoteType } from "@rallly/database";
 import { prisma } from "@rallly/database";
 import { shortUrl } from "@rallly/utils/absolute-url";
-import { env } from "@/env";
 import {
   parseConferencing,
   parsePollConferencing,
@@ -842,7 +841,9 @@ export async function getPollDetails({
       : null,
     inviteLink: shortUrl(`/invite/${poll.id}`),
     oidcEnabled: Boolean(
-      env.OIDC_DISCOVERY_URL && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET,
+      process.env.OIDC_DISCOVERY_URL &&
+        process.env.OIDC_CLIENT_ID &&
+        process.env.OIDC_CLIENT_SECRET,
     ),
   };
 }

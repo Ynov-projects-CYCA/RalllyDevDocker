@@ -29,7 +29,9 @@ export async function signOut(options?: { federated?: boolean }) {
   clearBrowserQueryCache();
 
   if (typeof window !== "undefined" && options?.federated !== false) {
-    const postLogoutRedirect = encodeURIComponent(`${window.location.origin}/login`);
+    const postLogoutRedirect = encodeURIComponent(
+      `${window.location.origin}/login`,
+    );
     window.location.href = `http://auth.localhost/application/o/rallly/end-session/?post_logout_redirect_uri=${postLogoutRedirect}`;
   }
 }
