@@ -3,6 +3,10 @@ import { cn } from "@rallly/ui";
 import { Button } from "@rallly/ui/button";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import * as React from "react";
+import {
+  ExpiredOptionLabel,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import VoteIcon from "@/features/poll/components/vote-icon";
 import { VoteSegmentedControl } from "@/features/poll/components/vote-segmented-control";
 import type { VoteType } from "@/features/poll/constants";
@@ -80,7 +84,6 @@ function buildWeeks(
 
 function TimeOption({
   result,
-  timeZone,
   readZone,
   savedVote,
   participantCount,
@@ -89,7 +92,6 @@ function TimeOption({
   canVote,
 }: {
   result: VoteResult;
-  timeZone: string | null;
   readZone: string | undefined;
   savedVote: VoteType | undefined;
   participantCount: number | null;
@@ -99,6 +101,8 @@ function TimeOption({
 }) {
   const { formatDateTime, formatDateTimeRange } = useDateTime();
   const { value, setVote, isEditing } = useVote(result.optionId);
+  const { isExpired } = useOptionExpiration();
+  const expired = isExpired(result.optionId);
   const shown = isEditing ? value : savedVote;
   const end = new Date(result.startTime.getTime() + result.duration * 60_000);
 
@@ -109,12 +113,18 @@ function TimeOption({
   })}`;
 
   return (
-    <li className="rounded-lg border bg-card p-2">
+    <li
+      className={cn(
+        "rounded-lg border bg-card p-2",
+        expired && "bg-muted/40 text-muted-foreground",
+      )}
+    >
       <p className="truncate font-medium text-sm tabular-nums">
         {formatDateTimeRange(result.startTime, end, "time", {
           timeZone: readZone,
         })}
       </p>
+      {expired ? <ExpiredOptionLabel /> : null}
       <div className="mt-1.5">
         <VoteScore
           optionId={result.optionId}
@@ -129,6 +139,7 @@ function TimeOption({
       <div className="mt-2">
         {canVote && isEditing ? (
           <VoteSegmentedControl
+            disabled={expired}
             value={value}
             onChange={setVote}
             optionLabel={label}
@@ -294,7 +305,6 @@ export function VoteViewWeek({
                     <TimeOption
                       key={result.optionId}
                       result={result}
-                      timeZone={poll.timeZone}
                       readZone={readZone}
                       savedVote={savedVotes.get(result.optionId)}
                       participantCount={participantCount}

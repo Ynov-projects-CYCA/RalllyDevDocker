@@ -12,6 +12,7 @@ import {
 } from "@rallly/ui/dialog";
 import * as m from "motion/react-m";
 import type * as React from "react";
+import { ExpiredOptionLabel } from "@/features/poll/components/option-expiration";
 import { IfScoresVisible } from "@/features/poll/components/visibility";
 import { PollOptionVoteSummary } from "@/features/poll/components/vote-breakdown-dialog";
 import { Trans, useTranslation } from "@/i18n/client";
@@ -24,6 +25,7 @@ export interface PollOptionProps {
   yesScore: number;
   ifNeedBeScore: number;
   editable?: boolean;
+  expired?: boolean;
   vote?: VoteType;
   onChange: (vote: VoteType) => void;
   selectedParticipantId?: string;
@@ -39,6 +41,7 @@ const PollOption: React.FunctionComponent<PollOptionProps> = ({
   vote,
   onChange,
   editable = false,
+  expired = false,
   optionId,
   optionLabel,
   yesScore,
@@ -54,6 +57,7 @@ const PollOption: React.FunctionComponent<PollOptionProps> = ({
     <div
       className={cn(
         "grid h-14 items-center px-2 text-left transition-[grid-template-columns] duration-300",
+        expired && "bg-muted/40 text-muted-foreground",
         editable &&
           (allowTentativeVotes
             ? "grid-cols-[0rem_1fr_3.5rem_9.375rem]"
@@ -69,7 +73,10 @@ const PollOption: React.FunctionComponent<PollOptionProps> = ({
       >
         {showVote ? <VoteIcon type={vote} /> : null}
       </span>
-      {children}
+      <div>
+        {children}
+        {expired ? <ExpiredOptionLabel /> : null}
+      </div>
       <IfScoresVisible>
         <Button
           {...dialog.triggerProps}
@@ -113,6 +120,7 @@ const PollOption: React.FunctionComponent<PollOptionProps> = ({
           transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
         >
           <VoteSegmentedControl
+            disabled={expired}
             value={vote}
             onChange={onChange}
             optionLabel={optionLabel}

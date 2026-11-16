@@ -6,6 +6,10 @@ import {
 } from "@tanstack/react-table";
 import * as React from "react";
 import { DataList } from "@/components/data-list";
+import {
+  ExpiredOptionLabel,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import VoteIcon from "@/features/poll/components/vote-icon";
 import { VoteSegmentedControl } from "@/features/poll/components/vote-segmented-control";
 import type { VoteType } from "@/features/poll/constants";
@@ -66,12 +70,14 @@ function VoteCell({
   canVote: boolean;
 }) {
   const { value, setVote, isEditing } = useVote(optionId);
+  const { isExpired } = useOptionExpiration();
 
   if (!canVote || !isEditing) {
     return savedVote !== undefined ? <VoteLabel type={savedVote} /> : null;
   }
   return (
     <VoteSegmentedControl
+      disabled={isExpired(optionId)}
       value={value}
       onChange={setVote}
       optionLabel={optionLabel}
@@ -93,6 +99,7 @@ export function VoteViewList({
   canVote,
 }: VoteViewProps) {
   const { formatDateTime, formatDateTimeRange } = useDateTime();
+  const { isExpired } = useOptionExpiration();
 
   const isTimeSlot = (results[0]?.duration ?? 0) > 0;
   // All-day dates and floating times are stored as UTC wall time and read
@@ -126,6 +133,7 @@ export function VoteViewList({
             ) : (
               <OptionDate value={row.original.startTime} />
             )}
+            {isExpired(row.original.optionId) ? <ExpiredOptionLabel /> : null}
           </span>
         ),
       }),
@@ -176,6 +184,7 @@ export function VoteViewList({
     ],
     [
       canVote,
+      isExpired,
       participantCount,
       formatDateTime,
       formatDateTimeRange,
@@ -201,6 +210,7 @@ export function VoteViewList({
   // show through its transparent end; hover is cleared to keep it clean.
   const { byOption: currentVotes } = useVotesByOption(savedVotes);
   const getRowClassName = (result: VoteResult) => {
+    if (isExpired(result.optionId)) return "bg-muted/40 text-muted-foreground";
     const vote = currentVotes.get(result.optionId);
     if (vote === "yes") {
       return "bg-linear-to-r from-green-50 to-transparent text-green-700 hover:bg-transparent dark:from-green-500/10 dark:text-green-400";

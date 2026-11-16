@@ -2,6 +2,10 @@ import { cn } from "@rallly/ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@rallly/ui/tooltip";
 import { ClockIcon } from "lucide-react";
 import type * as React from "react";
+import {
+  ExpiredOptionLabel,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import { useOptions } from "@/features/poll/components/poll-context";
 import { ConnectedScoreSummary } from "@/features/poll/components/score-summary";
 
@@ -58,6 +62,7 @@ const scoreRowTop = monthRowHeight + dayRowHeight;
 
 const PollHeader = () => {
   const { options } = useOptions();
+  const { isExpired } = useOptionExpiration();
 
   const monthGroups: { month: string; year: string; count: number }[] = [];
 
@@ -157,6 +162,7 @@ const PollHeader = () => {
                     duration={option.duration}
                   />
                 ) : null}
+                {isExpired(option.optionId) ? <ExpiredOptionLabel /> : null}
                 <ConnectedScoreSummary optionId={option.optionId} />
               </div>
             </th>

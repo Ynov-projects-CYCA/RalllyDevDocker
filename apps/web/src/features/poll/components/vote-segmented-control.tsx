@@ -14,12 +14,14 @@ type VoteType = "yes" | "ifNeedBe" | "no";
 
 export const VoteSegmentedControl = ({
   value,
+  disabled = false,
   onChange,
   optionLabel,
   allowTentativeVotes = true,
   className,
 }: {
   value?: VoteType;
+  disabled?: boolean;
   onChange: (value: VoteType) => void;
   className?: string;
   /** When false only yes and no are offered. */
@@ -43,12 +45,20 @@ export const VoteSegmentedControl = ({
   return (
     <SegmentedControl
       data-testid="vote-selector"
-      aria-label={optionLabel}
+      disabled={disabled}
+      aria-label={[
+        optionLabel,
+        disabled
+          ? t("pollOptionExpired", { defaultValue: "Time slot expired" })
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(", ")}
       // Touch-sized below sm; from there it matches a default button.
-      className={cn("h-11 sm:h-9", className)}
+      className={cn("h-11 sm:h-9", disabled && "opacity-50", className)}
       value={value ?? null}
       onValueChange={(newValue) => {
-        if (newValue) {
+        if (!disabled && newValue) {
           onChange(newValue as VoteType);
         }
       }}
@@ -56,9 +66,11 @@ export const VoteSegmentedControl = ({
       {voteTypes.map((type) => (
         <SegmentedControlItem
           key={type}
+          disabled={disabled}
+          tabIndex={disabled ? -1 : undefined}
           value={type}
           aria-label={voteLabels[type]}
-          className="w-11 sm:w-9 data-unchecked:[&_svg]:text-gray-400 dark:data-unchecked:[&_svg]:text-gray-600"
+          className="w-11 data-disabled:cursor-not-allowed sm:w-9 data-unchecked:[&_svg]:text-gray-400 dark:data-unchecked:[&_svg]:text-gray-600"
         >
           <VoteIcon type={type} />
         </SegmentedControlItem>

@@ -17,6 +17,11 @@ import {
   useUpdateParticipantVotes,
 } from "@/features/poll/components/mutations";
 import { NewParticipantForm } from "@/features/poll/components/new-participant-modal";
+import {
+  OptionExpirationProvider,
+  prepareVotesForSubmission,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import { useTranslation } from "@/i18n/client";
 
 const formSchema = z.object({
@@ -79,7 +84,20 @@ export const useVotingForm = () => {
 
 export const VotingForm = ({ children }: React.PropsWithChildren) => {
   const poll = usePoll();
+  return (
+    <OptionExpirationProvider
+      options={poll.options}
+      pollTimeZone={poll.timeZone}
+    >
+      <VotingFormContent>{children}</VotingFormContent>
+    </OptionExpirationProvider>
+  );
+};
+
+const VotingFormContent = ({ children }: React.PropsWithChildren) => {
+  const poll = usePoll();
   const { options } = poll;
+  const { isExpired } = useOptionExpiration();
   const { t } = useTranslation();
   const updateParticipantVotes = useUpdateParticipantVotes();
   const token = useEditToken();
@@ -113,28 +131,68 @@ export const VotingForm = ({ children }: React.PropsWithChildren) => {
     resolver: zodResolver(formSchema),
   });
 
+  const getVotes = () => {
+    const data = form.getValues();
+    const saved =
+      participants.find((p) => p.id === data.participantId)?.votes ?? [];
+    const result = prepareVotesForSubmission(
+      options,
+      data.votes,
+      saved,
+      isExpired,
+    );
+    if (result.changed || !result.hasFuture) {
+      form.setValue(
+        "votes",
+        options.map(({ id }) => ({
+          optionId: id,
+          type: result.votes.find((v) => v.optionId === id)?.type,
+        })),
+      );
+      toast.error(
+        !result.hasFuture
+          ? t("pollNoFutureOptions", {
+              defaultValue: "No time slots are available for voting.",
+            })
+          : t("pollOptionsExpiredReview", {
+              defaultValue:
+                "Some time slots have expired. Their changes were removed. Please review your response before saving.",
+            }),
+      );
+      return null;
+    }
+    return result.votes;
+  };
+
   return (
     <FormProvider {...form}>
       <form
         id="voting-form"
         onSubmit={form.handleSubmit(async (data) => {
+          const votes = getVotes();
+          if (!votes) return;
           if (data.participantId) {
             const result = await updateParticipantVotes.execute({
               participantId: data.participantId,
-              votes: normalizeVotes(optionIds, data.votes),
+              votes,
               token,
             });
 
             if (!result.ok) {
               // Stay in edit mode so the selection is not lost.
               toast.error(
-                result.reason === "closed"
-                  ? t("pollClosedDescription", {
-                      defaultValue: "No more responses are being accepted.",
+                result.reason === "expiredOptions"
+                  ? t("pollOptionsExpired", {
+                      defaultValue:
+                        "Some time slots have expired. Please review your response before saving.",
                     })
-                  : t("actionErrorInternalServerError", {
-                      defaultValue: "An internal server error occurred",
-                    }),
+                  : result.reason === "closed"
+                    ? t("pollClosedDescription", {
+                        defaultValue: "No more responses are being accepted.",
+                      })
+                    : t("actionErrorInternalServerError", {
+                        defaultValue: "An internal server error occurred",
+                      }),
               );
               return;
             }
@@ -165,6 +223,7 @@ export const VotingForm = ({ children }: React.PropsWithChildren) => {
       >
         <DialogContent size="sm">
           <NewParticipantForm
+            getVotes={getVotes}
             votes={normalizeVotes(optionIds, form.watch("votes"))}
             onSubmit={(newParticipant) => {
               form.reset({
