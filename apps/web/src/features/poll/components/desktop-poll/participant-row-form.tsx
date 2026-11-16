@@ -4,8 +4,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@rallly/ui/tooltip";
 import { UndoIcon } from "lucide-react";
 import * as React from "react";
 import { Controller } from "react-hook-form";
-
 import { OptimizedAvatarImage } from "@/components/optimized-avatar-image";
+import {
+  ExpiredOptionLabel,
+  useOptionExpiration,
+} from "@/features/poll/components/option-expiration";
 import {
   Participant,
   ParticipantName,
@@ -37,6 +40,7 @@ const ParticipantRowForm = ({
   const { optionIds, poll } = usePoll();
   const { options } = useOptions();
   const form = useVotingForm();
+  const { isExpired } = useOptionExpiration();
 
   React.useEffect(() => {
     function cancel(e: KeyboardEvent) {
@@ -117,6 +121,7 @@ const ParticipantRowForm = ({
       </td>
       {optionIds.map((optionId, i) => {
         const option = options[i];
+        const expired = isExpired(optionId);
         return (
           <td
             key={optionId}
@@ -126,8 +131,14 @@ const ParticipantRowForm = ({
               control={form.control}
               name={`votes.${i}`}
               render={({ field }) => (
-                <div className={cn("flex justify-center gap-2")}>
+                <div
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-1",
+                    expired && "bg-muted/40 text-muted-foreground",
+                  )}
+                >
                   <VoteSelector
+                    disabled={expired}
                     className="after:absolute after:inset-0"
                     optionLabel={
                       option ? getOptionDateTimeLabel(option) : undefined
@@ -135,9 +146,11 @@ const ParticipantRowForm = ({
                     value={field.value?.type}
                     allowTentativeVotes={poll.allowTentativeVotes}
                     onChange={(vote) => {
-                      field.onChange({ optionId, type: vote });
+                      if (!isExpired(optionId))
+                        field.onChange({ optionId, type: vote });
                     }}
                   />
+                  {expired ? <ExpiredOptionLabel /> : null}
                 </div>
               )}
             />
