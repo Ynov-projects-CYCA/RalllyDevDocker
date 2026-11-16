@@ -21,6 +21,7 @@ import { getPollInvitePath } from "@/features/poll/invite/utils";
 import type { PollStatus } from "@/features/poll/schema";
 import {
   filterCommentsForViewer,
+  getResponseVisibility,
   maskParticipantsForViewer,
 } from "@/features/poll/utils";
 import { loadActiveSpaceContentScope } from "@/features/space/loaders";
@@ -184,6 +185,7 @@ export const loadPollAvailability = cache(async (pollId: string) =>
  * invite page is the participant view, and the host reads the full list on
  * the admin page. The emailed link names the viewer's own response, so a
  * guest still sees it as theirs when opening the link in a fresh browser.
+ * Hidden responses are dropped here, before the list reaches the client.
  */
 export const loadInvitePoll = cache(
   async ({ pollId, token }: { pollId: string; token?: string }) => {
@@ -203,6 +205,12 @@ export const loadInvitePoll = cache(
 
     const user = session?.user ?? null;
     const viewer = { userId: user?.id ?? null, linkedParticipantIds };
+    const responseVisibility = getResponseVisibility({
+      hideResponses: poll.hideResponses,
+      responseRevealThreshold: poll.responseRevealThreshold,
+      status: poll.status,
+      responseCount: participants.length,
+    });
 
     return {
       poll,
@@ -210,7 +218,9 @@ export const loadInvitePoll = cache(
         participants,
         viewer,
         hideParticipants: poll.hideParticipants,
+        responseVisibility,
       }),
+      responseVisibility,
       comments: filterCommentsForViewer({
         comments,
         viewerUserId: viewer.userId,

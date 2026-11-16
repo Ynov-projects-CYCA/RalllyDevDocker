@@ -12,10 +12,13 @@ export class NewPollPage {
   async create({
     name,
     enableComments,
+    hideResponses,
     allDay,
   }: {
     name: string;
     enableComments?: boolean;
+    /** Needs a Pro space: a free one opens the pay wall instead. */
+    hideResponses?: boolean;
     /** Creates a date poll rather than the default time poll. */
     allDay?: boolean;
   }): Promise<PollPage> {
@@ -64,6 +67,12 @@ export class NewPollPage {
     if (enableComments) {
       // Comments are off by default; opt in to the legacy comments setting
       await page.getByRole("switch", { name: /comments/i }).click();
+    }
+
+    if (hideResponses) {
+      const toggle = page.getByRole("switch", { name: /hide responses/i });
+      await toggle.click();
+      await expect(toggle).toBeChecked();
     }
 
     await page.getByRole("button", { name: /^create poll$/i }).click();

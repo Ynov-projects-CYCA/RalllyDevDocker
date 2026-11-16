@@ -72,6 +72,12 @@ export const pollChangeSchema = z.discriminatedUnion("field", [
   z.object({ field: z.literal("timeZone"), from: z.string().nullable() }),
   z.object({ field: z.literal("hideParticipants"), from: z.boolean() }),
   z.object({ field: z.literal("hideScores"), from: z.boolean() }),
+  z.object({ field: z.literal("hideResponses"), from: z.boolean() }),
+  z.object({
+    field: z.literal("responseRevealThreshold"),
+    // Null: the reveal waited for the poll to be closed or finalized.
+    from: z.int().nullable(),
+  }),
   z.object({ field: z.literal("disableComments"), from: z.boolean() }),
   z.object({ field: z.literal("allowTentativeVotes"), from: z.boolean() }),
   z.object({ field: z.literal("requireParticipantEmail"), from: z.boolean() }),

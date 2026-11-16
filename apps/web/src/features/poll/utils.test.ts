@@ -5,8 +5,10 @@ import {
   getChosenOptionRank,
   getFinalizePlanGate,
   getFinalizeTiming,
+  getResponseVisibility,
   maskParticipantsForViewer,
   rankOptionsByPopularity,
+  resolveHiddenResponsesSettings,
   summarizeNotifySelection,
   toAvailabilitySpans,
 } from "./utils";
@@ -30,6 +32,117 @@ const participant = (
   votes: [{ optionId: "opt-1", type: "yes" as const }],
 });
 
+const visible = { hidden: false } as const;
+const hidden = {
+  hidden: true,
+  responseCount: 3,
+  revealThreshold: null,
+} as const;
+
+describe("getResponseVisibility", () => {
+  const open = {
+    hideResponses: true,
+    responseRevealThreshold: null,
+    status: "open",
+    responseCount: 3,
+  } as const;
+
+  it("shows responses on a poll that does not hide them", () => {
+    expect(getResponseVisibility({ ...open, hideResponses: false })).toEqual({
+      hidden: false,
+    });
+  });
+
+  it("hides responses while the poll takes responses", () => {
+    expect(getResponseVisibility(open)).toEqual({
+      hidden: true,
+      responseCount: 3,
+      revealThreshold: null,
+    });
+  });
+
+  it.each([
+    "closed",
+    "scheduled",
+    "canceled",
+  ] as const)("reveals them once the poll is %s", (status) => {
+    expect(getResponseVisibility({ ...open, status })).toEqual({
+      hidden: false,
+    });
+  });
+
+  it("keeps them hidden below the threshold and says how far off it is", () => {
+    expect(
+      getResponseVisibility({ ...open, responseRevealThreshold: 4 }),
+    ).toEqual({ hidden: true, responseCount: 3, revealThreshold: 4 });
+  });
+
+  it("reveals them as soon as the threshold is reached", () => {
+    expect(
+      getResponseVisibility({ ...open, responseRevealThreshold: 3 }),
+    ).toEqual({ hidden: false });
+  });
+
+  it("hides them again when a deleted response takes the count back under the threshold", () => {
+    // Nothing is stored as "revealed": a deleted response takes the count
+    // back down and the next read hides the rest again.
+    expect(
+      getResponseVisibility({
+        ...open,
+        responseRevealThreshold: 3,
+        responseCount: 2,
+      }),
+    ).toMatchObject({ hidden: true });
+  });
+});
+
+describe("resolveHiddenResponsesSettings", () => {
+  const off = { hideResponses: false, responseRevealThreshold: null };
+  const onWithThreshold = { hideResponses: true, responseRevealThreshold: 5 };
+
+  it("keeps the stored settings when the input omits both", () => {
+    expect(
+      resolveHiddenResponsesSettings({ current: onWithThreshold, input: {} }),
+    ).toEqual(onWithThreshold);
+  });
+
+  it("turns hiding on with a threshold", () => {
+    expect(
+      resolveHiddenResponsesSettings({
+        current: off,
+        input: { hideResponses: true, responseRevealThreshold: 10 },
+      }),
+    ).toEqual({ hideResponses: true, responseRevealThreshold: 10 });
+  });
+
+  it("clears the threshold when hiding is turned off", () => {
+    expect(
+      resolveHiddenResponsesSettings({
+        current: onWithThreshold,
+        input: { hideResponses: false },
+      }),
+    ).toEqual(off);
+  });
+
+  it("drops a threshold sent for a poll that does not hide responses", () => {
+    expect(
+      resolveHiddenResponsesSettings({
+        current: off,
+        input: { responseRevealThreshold: 5 },
+      }),
+    ).toEqual(off);
+  });
+
+  it("changes only the threshold while hiding stays on", () => {
+    expect(
+      resolveHiddenResponsesSettings({
+        current: onWithThreshold,
+        input: { responseRevealThreshold: null },
+      }),
+    ).toEqual({ hideResponses: true, responseRevealThreshold: null });
+  });
+});
+
 describe("maskParticipantsForViewer", () => {
   it("keeps notes only for the viewer's own responses", () => {
     const result = maskParticipantsForViewer({
@@ -40,6 +153,7 @@ describe("maskParticipantsForViewer", () => {
       ],
       viewer: { userId: "user-1", linkedParticipantIds: ["c"] },
       hideParticipants: false,
+      responseVisibility: visible,
     });
 
     expect(result.map((p) => p.note)).toEqual(["Note a", null, "Note c"]);
@@ -50,6 +164,7 @@ describe("maskParticipantsForViewer", () => {
       participants: [participant("a")],
       viewer: { userId: null, linkedParticipantIds: [] },
       hideParticipants: false,
+      responseVisibility: visible,
     });
 
     expect(result).not.toHaveProperty("token");
@@ -65,6 +180,7 @@ describe("maskParticipantsForViewer", () => {
       ],
       viewer: { userId: "user-1", linkedParticipantIds: [] },
       hideParticipants: true,
+      responseVisibility: visible,
     });
 
     expect(result[0]).toMatchObject({
@@ -82,6 +198,35 @@ describe("maskParticipantsForViewer", () => {
       hidden: true,
     });
     expect(result[1].votes).toEqual([{ optionId: "opt-1", type: "yes" }]);
+  });
+
+  it("leaves everyone else's response out while responses are hidden", () => {
+    const result = maskParticipantsForViewer({
+      participants: [
+        participant("a", { userId: "user-1" }),
+        participant("b", { userId: "user-2" }),
+        participant("c"),
+      ],
+      viewer: { userId: "user-1", linkedParticipantIds: ["c"] },
+      hideParticipants: false,
+      responseVisibility: hidden,
+    });
+
+    // Both of the viewer's own responses survive: the one their session
+    // created and the one the emailed link names.
+    expect(result.map((p) => p.id)).toEqual(["a", "c"]);
+    expect(result[0].votes).toEqual([{ optionId: "opt-1", type: "yes" }]);
+  });
+
+  it("sends nothing to a viewer with no response of their own", () => {
+    expect(
+      maskParticipantsForViewer({
+        participants: [participant("a", { userId: "user-1" })],
+        viewer: { userId: null, linkedParticipantIds: [] },
+        hideParticipants: true,
+        responseVisibility: hidden,
+      }),
+    ).toEqual([]);
   });
 });
 

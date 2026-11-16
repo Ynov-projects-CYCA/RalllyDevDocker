@@ -11,6 +11,8 @@ import {
   CalendarMinusIcon,
   CalendarPlusIcon,
   CircleStopIcon,
+  EyeIcon,
+  EyeOffIcon,
   GlobeIcon,
   ListChecksIcon,
   MailIcon,
@@ -165,6 +167,8 @@ const iconByChange: Record<PollChange["field"], LucideIcon> = {
   timeZone: GlobeIcon,
   hideParticipants: VenetianMaskIcon,
   hideScores: BarChart2Icon,
+  hideResponses: EyeOffIcon,
+  responseRevealThreshold: EyeIcon,
   disableComments: MessageCircleIcon,
   allowTentativeVotes: ListChecksIcon,
   requireParticipantEmail: MailIcon,
@@ -184,6 +188,7 @@ function toneOfChange(change: PollChange): keyof typeof toneClassName {
     // requiring an email takes something away.
     case "hideParticipants":
     case "hideScores":
+    case "hideResponses":
     case "disableComments":
     case "requireParticipantEmail":
       return change.from ? "added" : "removed";
@@ -291,6 +296,34 @@ function ChangeDescription({ change }: { change: PollChange }) {
         <Trans i18nKey="pollActivityVotesShown" defaults="Votes shown" />
       ) : (
         <Trans i18nKey="pollActivityVotesHidden" defaults="Votes hidden" />
+      );
+    case "hideResponses":
+      return change.from ? (
+        <Trans
+          i18nKey="pollActivityResponsesShown"
+          defaults="Responses shown to participants"
+        />
+      ) : (
+        <Trans
+          i18nKey="pollActivityResponsesHidden"
+          defaults="Responses hidden from participants"
+        />
+      );
+    case "responseRevealThreshold":
+      // Only the old value is snapshotted. From none, the new one has to be
+      // a count; from a count, it may be another count or none.
+      return change.from === null ? (
+        <Trans
+          i18nKey="pollActivityEarlyRevealTurnedOn"
+          defaults="Early reveal of responses turned on"
+        />
+      ) : (
+        <Trans
+          i18nKey="pollActivityEarlyRevealChanged"
+          defaults="Early reveal changed from <b>{count, plural, one {# response} other {# responses}}</b>"
+          values={{ count: change.from }}
+          components={{ b }}
+        />
       );
     case "disableComments":
       return change.from ? (

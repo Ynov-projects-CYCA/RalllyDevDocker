@@ -157,6 +157,8 @@ export const CreatePoll = ({
       options: [],
       hideScores: false,
       hideParticipants: false,
+      hideResponses: false,
+      responseRevealThreshold: null,
       enableComments: false,
       allowTentativeVotes: true,
       duration: 60,
@@ -281,6 +283,8 @@ export const CreatePoll = ({
               hideParticipants: formData?.hideParticipants,
               disableComments: !formData?.enableComments,
               hideScores: formData?.hideScores,
+              hideResponses: formData?.hideResponses,
+              responseRevealThreshold: formData?.responseRevealThreshold,
               allowTentativeVotes: formData?.allowTentativeVotes,
               requireParticipantEmail: formData?.requireParticipantEmail,
               options: required(formData?.options).map((option) => ({

@@ -18,6 +18,10 @@ export type PollDetails = {
   disableComments: boolean;
   allowTentativeVotes: boolean;
   hideScores: boolean;
+  /** Withholds everyone else's responses from participants; see getResponseVisibility. */
+  hideResponses: boolean;
+  /** Responses that reveal hidden ones early; null until the poll stops taking responses. */
+  responseRevealThreshold: number | null;
   requireParticipantEmail: boolean;
   muted: boolean;
   timeZone: string | null;
@@ -45,6 +49,21 @@ export type PollDetails = {
 };
 
 export type Vote = { optionId: string; type: VoteType };
+
+/**
+ * Whether a participant may see everyone else's responses. While hidden,
+ * the server sends only the viewer's own, plus what the page needs to say
+ * when the rest will appear.
+ */
+export type ResponseVisibility =
+  | { hidden: false }
+  | {
+      hidden: true;
+      /** Responses given so far, the viewer's own included. */
+      responseCount: number;
+      /** Responses that reveal them early; null until the poll stops taking responses. */
+      revealThreshold: number | null;
+    };
 
 export type PollParticipant = {
   id: string;

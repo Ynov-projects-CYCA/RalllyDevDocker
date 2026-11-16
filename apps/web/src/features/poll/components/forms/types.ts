@@ -24,6 +24,9 @@ export type PollSettingsFormData = {
   requireParticipantEmail: boolean;
   hideParticipants: boolean;
   hideScores: boolean;
+  hideResponses: boolean;
+  /** Null reveals hidden responses only once the poll is closed or finalized. */
+  responseRevealThreshold: number | null;
   enableComments: boolean;
   allowTentativeVotes: boolean;
 };

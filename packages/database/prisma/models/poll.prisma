@@ -52,6 +52,16 @@ model Poll {
   scheduledEventId        String?           @map("scheduled_event_id")
   hideParticipants        Boolean           @default(false) @map("hide_participants")
   hideScores              Boolean           @default(false) @map("hide_scores")
+  /// Withholds everyone else's responses from a participant while the poll
+  /// takes responses, so nobody votes with the room. The host always sees
+  /// every response. Revealed once the poll stops taking responses (closed or
+  /// finalized), or earlier at responseRevealThreshold. Derived on every
+  /// read, never stored as "revealed": reopening the poll hides them again.
+  hideResponses           Boolean           @default(false) @map("hide_responses")
+  /// Reveals hidden responses once this many people have responded. Null:
+  /// only when the poll stops taking responses. A CHECK constraint keeps it
+  /// null unless hideResponses is on, so a stale threshold never lingers.
+  responseRevealThreshold Int?              @map("response_reveal_threshold")
   disableComments         Boolean           @default(true) @map("disable_comments")
   requireParticipantEmail Boolean           @default(false) @map("require_participant_email")
   /// Whether participants may cast the tentative "if need be" vote. Positive

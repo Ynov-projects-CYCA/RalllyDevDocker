@@ -1,6 +1,7 @@
 import { Card } from "@rallly/ui/card";
 import { Spinner } from "@/components/spinner";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { HiddenResponsesNotice } from "@/features/poll/components/hidden-responses-notice";
 import { EventSidebar } from "@/features/poll/invite/components/event-sidebar";
 import { ManagePollButton } from "@/features/poll/vote/components/manage-poll-button";
 import { VotePageFooter } from "@/features/poll/vote/components/vote-page-footer";
@@ -63,6 +64,10 @@ export function VotePage({
                 spaceBrandingAllowed={spaceBrandingAllowed}
                 instanceBranding={instanceBranding}
                 hideAttribution={hideAttribution}
+              />
+              <HiddenResponsesNotice
+                visibility={view.responseVisibility}
+                className="mt-4"
               />
             </aside>
             <section className="flex flex-1 flex-col lg:min-h-0 lg:border-l">

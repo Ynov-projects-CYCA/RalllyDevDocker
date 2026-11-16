@@ -2,7 +2,12 @@ import { customAlphabet } from "nanoid";
 import type { PollConferencing } from "@/features/conferencing/schema";
 import { isProConferencingProvider } from "@/features/conferencing/utils";
 import type { VoteType } from "@/features/poll/constants";
-import type { PollComment, PollParticipant } from "@/features/poll/types";
+import type { PollStatus } from "@/features/poll/schema";
+import type {
+  PollComment,
+  PollParticipant,
+  ResponseVisibility,
+} from "@/features/poll/types";
 import type { SpaceTier } from "@/features/space/schema";
 
 // Alphanumeric only: url safe with no linkifier edge cases. 32 chars is the
@@ -36,27 +41,96 @@ type RawParticipant = Omit<PollParticipant, "hidden" | "editUrl"> & {
 };
 
 /**
+ * Whether a participant may see everyone else's responses. Hidden responses
+ * stay hidden only while the poll takes responses, the window in which
+ * seeing the room could sway a vote: once it stops (closed, finalized,
+ * canceled) or enough people have responded, there is nothing left to
+ * protect. Derived on every read rather than stored, so a reopened poll
+ * hides them again and a deleted response can take the count back under
+ * the threshold. The host is not a participant here: their pages read every
+ * response without asking.
+ */
+export function getResponseVisibility({
+  hideResponses,
+  responseRevealThreshold,
+  status,
+  responseCount,
+}: {
+  hideResponses: boolean;
+  responseRevealThreshold: number | null;
+  status: PollStatus;
+  responseCount: number;
+}): ResponseVisibility {
+  const revealed =
+    !hideResponses ||
+    status !== "open" ||
+    (responseRevealThreshold !== null &&
+      responseCount >= responseRevealThreshold);
+
+  return revealed
+    ? { hidden: false }
+    : { hidden: true, responseCount, revealThreshold: responseRevealThreshold };
+}
+
+/**
+ * The hidden responses settings a write persists, from the stored ones and
+ * a partial input where an omitted field is unchanged. The threshold only
+ * survives while responses stay hidden, as the CHECK constraint on the
+ * column requires, so turning hiding off clears it rather than leaving a
+ * stale value to resurface when it is turned back on.
+ */
+export function resolveHiddenResponsesSettings({
+  current,
+  input,
+}: {
+  current: { hideResponses: boolean; responseRevealThreshold: number | null };
+  input: { hideResponses?: boolean; responseRevealThreshold?: number | null };
+}) {
+  const hideResponses = input.hideResponses ?? current.hideResponses;
+
+  if (!hideResponses) {
+    return { hideResponses, responseRevealThreshold: null };
+  }
+
+  return {
+    hideResponses,
+    responseRevealThreshold:
+      input.responseRevealThreshold === undefined
+        ? current.responseRevealThreshold
+        : input.responseRevealThreshold,
+  };
+}
+
+/**
  * Scopes the response list to a viewer who is not the host. Notes are for
  * the host and their author only, so they survive only on the viewer's own
  * responses: the ones their session created, or the one the emailed link
  * they opened names. With hidden participants, everyone else's identity is
- * withheld while their votes still count.
+ * withheld while their votes still count. With hidden responses, everyone
+ * else's response is left out entirely: a row without its votes would still
+ * say who answered and when.
  */
 export function maskParticipantsForViewer({
   participants,
   viewer,
   hideParticipants,
+  responseVisibility,
 }: {
   participants: RawParticipant[];
   viewer: { userId: string | null; linkedParticipantIds: string[] };
   hideParticipants: boolean;
+  responseVisibility: ResponseVisibility;
 }): PollParticipant[] {
   const linkedIds = new Set(viewer.linkedParticipantIds);
   const isOwn = (participant: { id: string; userId: string | null }) =>
     linkedIds.has(participant.id) ||
     (!!viewer.userId && participant.userId === viewer.userId);
 
-  return participants.map(({ token: _token, ...participant }) => {
+  const visibleParticipants = responseVisibility.hidden
+    ? participants.filter(isOwn)
+    : participants;
+
+  return visibleParticipants.map(({ token: _token, ...participant }) => {
     if (isOwn(participant)) {
       return { ...participant, hidden: false, editUrl: null };
     }

@@ -88,6 +88,8 @@ function getDefaultValues(poll: PollDetails): NewEventData {
     duration: poll.options[0]?.duration || 60,
     hideParticipants: poll.hideParticipants,
     hideScores: poll.hideScores,
+    hideResponses: poll.hideResponses,
+    responseRevealThreshold: poll.responseRevealThreshold,
     enableComments: !poll.disableComments,
     allowTentativeVotes: poll.allowTentativeVotes,
     requireParticipantEmail: poll.requireParticipantEmail,
@@ -161,6 +163,8 @@ const detailFields = [
 const settingFields = [
   "hideParticipants",
   "hideScores",
+  "hideResponses",
+  "responseRevealThreshold",
   "enableComments",
   "allowTentativeVotes",
   "requireParticipantEmail",
@@ -229,6 +233,8 @@ export function EditPoll({
     if (settingsChanged) {
       input.hideParticipants = data.hideParticipants;
       input.hideScores = data.hideScores;
+      input.hideResponses = data.hideResponses;
+      input.responseRevealThreshold = data.responseRevealThreshold;
       input.disableComments = !data.enableComments;
       input.allowTentativeVotes = data.allowTentativeVotes;
       input.requireParticipantEmail = data.requireParticipantEmail;

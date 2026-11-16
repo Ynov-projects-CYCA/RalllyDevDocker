@@ -6,6 +6,7 @@ type ChangeAction = "added" | "changed" | "removed";
 const settingFields = [
   "hideParticipants",
   "hideScores",
+  "hideResponses",
   "disableComments",
   "allowTentativeVotes",
   "requireParticipantEmail",
@@ -31,6 +32,7 @@ export function getPollChanges({
     location: string | null;
     conferencing: PollConferencing | null;
     timeZone: string | null;
+    responseRevealThreshold: number | null;
   } & PollSettings;
   next: {
     title?: string;
@@ -38,6 +40,7 @@ export function getPollChanges({
     location?: string;
     conferencing?: PollConferencing | null;
     timeZone: string | null;
+    responseRevealThreshold?: number | null;
   } & Partial<PollSettings>;
 }): PollChange[] {
   const changes: PollChange[] = [];
@@ -78,6 +81,22 @@ export function getPollChanges({
     if (value !== undefined && value !== prior[field]) {
       changes.push({ field, from: prior[field] });
     }
+  }
+
+  // The threshold is part of hiding responses, so it only gets an entry of
+  // its own while they stay hidden. Turning hiding on or off already reads
+  // as one change, and the current threshold lives on the poll.
+  const staysHidden =
+    prior.hideResponses && (next.hideResponses ?? prior.hideResponses);
+  if (
+    staysHidden &&
+    next.responseRevealThreshold !== undefined &&
+    next.responseRevealThreshold !== prior.responseRevealThreshold
+  ) {
+    changes.push({
+      field: "responseRevealThreshold",
+      from: prior.responseRevealThreshold,
+    });
   }
 
   return changes;

@@ -9,6 +9,8 @@ const prior = {
   timeZone: "Europe/London",
   hideParticipants: false,
   hideScores: false,
+  hideResponses: false,
+  responseRevealThreshold: null,
   disableComments: false,
   allowTentativeVotes: true,
   requireParticipantEmail: false,
@@ -114,11 +116,73 @@ describe("getPollChanges", () => {
           ...unchanged,
           hideParticipants: false,
           hideScores: false,
+          hideResponses: false,
+          responseRevealThreshold: null,
           disableComments: false,
           allowTentativeVotes: true,
           requireParticipantEmail: false,
         },
       }),
     ).toEqual([]);
+  });
+
+  describe("hidden responses", () => {
+    const hiding = {
+      ...prior,
+      hideResponses: true,
+      responseRevealThreshold: 5,
+    };
+
+    it("records hiding turned on as one change, without its threshold", () => {
+      expect(
+        getPollChanges({
+          prior,
+          next: {
+            ...unchanged,
+            hideResponses: true,
+            responseRevealThreshold: 10,
+          },
+        }),
+      ).toEqual([{ field: "hideResponses", from: false }]);
+    });
+
+    it("records hiding turned off as one change, without the cleared threshold", () => {
+      expect(
+        getPollChanges({
+          prior: hiding,
+          next: {
+            ...unchanged,
+            hideResponses: false,
+            responseRevealThreshold: null,
+          },
+        }),
+      ).toEqual([{ field: "hideResponses", from: true }]);
+    });
+
+    it("records a new threshold with the previous one while hiding stays on", () => {
+      expect(
+        getPollChanges({
+          prior: hiding,
+          next: {
+            ...unchanged,
+            hideResponses: true,
+            responseRevealThreshold: null,
+          },
+        }),
+      ).toEqual([{ field: "responseRevealThreshold", from: 5 }]);
+    });
+
+    it("records nothing when the threshold is resent unchanged", () => {
+      expect(
+        getPollChanges({
+          prior: hiding,
+          next: {
+            ...unchanged,
+            hideResponses: true,
+            responseRevealThreshold: 5,
+          },
+        }),
+      ).toEqual([]);
+    });
   });
 });

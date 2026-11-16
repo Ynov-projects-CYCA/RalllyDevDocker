@@ -37,7 +37,10 @@ import {
   SharePollDialog,
   useSharePollDialog,
 } from "@/features/poll/components/share-dialog";
-import { useVisibleParticipants } from "@/features/poll/components/visibility";
+import {
+  useVisibility,
+  useVisibleParticipants,
+} from "@/features/poll/components/visibility";
 import { VotingFooter } from "@/features/poll/components/voting-footer";
 import { useVotingForm } from "@/features/poll/components/voting-form";
 import { Trans, useTranslation } from "@/i18n/client";
@@ -226,6 +229,7 @@ function DesktopPollEmptyState() {
   const role = useRole();
   const { canAddNewParticipant } = usePermissions();
   const votingForm = useVotingForm();
+  const { responseVisibility } = useVisibility();
   const canShare = role === "admin";
 
   return (
@@ -234,7 +238,16 @@ function DesktopPollEmptyState() {
         <Users2Icon />
       </EmptyStateIcon>
       <EmptyStateTitle>
-        <Trans i18nKey="noResponses" defaults="No responses" />
+        {/* Others may have responded: their responses are withheld, not
+            missing, and the notice above the grid says so. */}
+        {responseVisibility.hidden ? (
+          <Trans
+            i18nKey="desktopPollEmptyStateHiddenResponsesTitle"
+            defaults="Nothing to show yet"
+          />
+        ) : (
+          <Trans i18nKey="noResponses" defaults="No responses" />
+        )}
       </EmptyStateTitle>
       {canAddNewParticipant || canShare ? (
         <EmptyStateDescription>
@@ -301,6 +314,12 @@ const DesktopPoll: React.FunctionComponent = () => {
 
   const { participants } = useParticipants();
   const visibleParticipants = useVisibleParticipants();
+  const { responseVisibility } = useVisibility();
+  // Hidden responses never reach the client, so the list holds only the
+  // viewer's own; the count still says how many people have responded.
+  const responseCount = responseVisibility.hidden
+    ? responseVisibility.responseCount
+    : participants.length;
 
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -358,7 +377,7 @@ const DesktopPoll: React.FunctionComponent = () => {
                 <CardTitle>
                   <Trans i18nKey="participants" />
                 </CardTitle>
-                <Badge>{participants.length}</Badge>
+                <Badge>{responseCount}</Badge>
                 {canAddNewParticipant && mode !== "new" ? (
                   <Button
                     aria-label={t("addParticipant", {

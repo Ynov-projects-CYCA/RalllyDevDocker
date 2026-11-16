@@ -7,6 +7,7 @@ import {
   getPollDetails,
   listParticipantIdsByToken,
 } from "@/features/poll/data";
+import { getResponseVisibility } from "@/features/poll/utils";
 import {
   countParticipants,
   getOptionScores,
@@ -41,26 +42,32 @@ export const loadVotePage = cache(
 
     const userId = session?.user?.id;
 
-    const responsePromise = getViewerResponse({
-      pollId,
-      userId,
-      participantIds,
-    });
-
-    const [response, scores, participantCount] = await Promise.all([
-      responsePromise,
-      // Scores stay hidden until the viewer has responded, so they are not
-      // read at all when they cannot be shown.
-      poll.hideScores
-        ? responsePromise.then((found) =>
-            found ? getOptionScores({ pollId }) : null,
-          )
-        : getOptionScores({ pollId }),
+    const [response, participantCount, eagerScores] = await Promise.all([
+      getViewerResponse({ pollId, userId, participantIds }),
       countParticipants({ pollId }),
+      // Scores are not read at all when they cannot be shown. Without either
+      // setting they always can, so the read starts alongside the others.
+      poll.hideScores || poll.hideResponses
+        ? null
+        : getOptionScores({ pollId }),
     ]);
 
+    const responseVisibility = getResponseVisibility({
+      hideResponses: poll.hideResponses,
+      responseRevealThreshold: poll.responseRevealThreshold,
+      status: poll.status,
+      responseCount: participantCount,
+    });
+
     // hideScores reveals the tally only once the viewer has responded.
-    const scoresVisible = !poll.hideScores || response !== null;
+    // Hidden responses withhold it until they are revealed: a tally of a
+    // handful of responses gives each one's votes away.
+    const scoresVisible =
+      !responseVisibility.hidden && (!poll.hideScores || response !== null);
+
+    const scores = scoresVisible
+      ? (eagerScores ?? (await getOptionScores({ pollId })))
+      : null;
 
     return {
       poll: {
@@ -107,6 +114,7 @@ export const loadVotePage = cache(
             : null,
       })),
       response,
+      responseVisibility,
       canVote: poll.status === "open",
     };
   },
