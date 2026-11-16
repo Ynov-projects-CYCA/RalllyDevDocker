@@ -1219,5 +1219,10 @@
   "you": "You",
   "youAreSignedInAs": "You're signed in as",
   "yourApiKey": "Your API key",
-  "yourName": "Your name…"
+  "yourName": "Your name…",
+  "shareDialogRecipientName": "Recipient's first name",
+  "shareDialogRecipientNameError": "Enter a first name between 1 and 100 characters.",
+  "shareDialogPersonalMessage": "Personal message (optional)",
+  "shareDialogMessageHint": "Included in the email. Maximum 1000 characters.",
+  "shareDialogMessageError": "The message must contain at most 1000 characters."
 }

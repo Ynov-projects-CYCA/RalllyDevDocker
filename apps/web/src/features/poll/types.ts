@@ -41,6 +41,7 @@ export type PollDetails = {
     conferencingUri: string | null;
   } | null;
   inviteLink: string;
+  oidcEnabled?: boolean;
 };
 
 export type Vote = { optionId: string; type: VoteType };

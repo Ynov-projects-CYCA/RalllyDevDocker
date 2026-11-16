@@ -1204,5 +1204,10 @@
   "you": "Vous",
   "youAreSignedInAs": "Vous êtes connecté en tant que",
   "yourApiKey": "Votre clé API",
-  "yourName": "Votre nom…"
+  "yourName": "Votre nom…",
+  "shareDialogRecipientName": "Prénom du destinataire",
+  "shareDialogRecipientNameError": "Saisissez un prénom de 1 à 100 caractères.",
+  "shareDialogPersonalMessage": "Message personnel (facultatif)",
+  "shareDialogMessageHint": "Inclus dans l’e-mail. Maximum 1 000 caractères.",
+  "shareDialogMessageError": "Le message doit contenir au maximum 1 000 caractères."
 }
