@@ -38,6 +38,7 @@ import VoteIcon from "@/features/poll/components/vote-icon";
 import { MAX_RESPONSE_NOTE_LENGTH } from "@/features/poll/schema";
 import { useUser } from "@/features/user/client";
 import { Trans, useTranslation } from "@/i18n/client";
+import { authClient } from "@/lib/auth-client";
 import { useDateTimeConfig } from "@/lib/datetime/client";
 
 const requiredEmailSchema = z.object({
@@ -136,7 +137,7 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
     props.requireParticipantEmail ?? poll?.requireParticipantEmail ?? false;
   const pollId = props.pollId ?? poll?.id;
   const { timeZone } = useDateTimeConfig();
-  const { user, createGuestIfNeeded } = useUser();
+  const { user } = useUser();
   const isLoggedIn = user && !user.isGuest;
   const form = useForm({
     resolver: zodResolver(schema),
@@ -256,6 +257,66 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
     );
   }
 
+  if (!isLoggedIn) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>
+            <Trans
+              i18nKey="newParticipantLoginRequiredTitle"
+              defaults="Connexion requise pour voter"
+            />
+          </DialogTitle>
+          <DialogDescription>
+            <Trans
+              i18nKey="newParticipantLoginRequiredDescription"
+              defaults="Ce sondage exige une authentification pour enregistrer votre vote. Votre identite sera certifiee par Authentik."
+            />
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-4">
+          <div className="flex flex-col gap-2">
+            <Label>{t("response", { defaultValue: "Response" })}</Label>
+            <VoteSummary votes={props.votes} />
+          </div>
+          <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
+            <p className="mb-4 text-sm text-muted-foreground">
+              <Trans
+                i18nKey="newParticipantLoginPrompt"
+                defaults="Connectez-vous avec votre compte Authentik pour valider votre disponibilite."
+              />
+            </p>
+            <Button
+              className="w-full"
+              variant="primary"
+              onClick={() => {
+                const currentPath =
+                  typeof window !== "undefined"
+                    ? window.location.pathname + window.location.search
+                    : "/";
+                authClient.signIn.oauth2({
+                  providerId: "oidc",
+                  callbackURL: currentPath,
+                  errorCallbackURL: "/login",
+                });
+              }}
+            >
+              <Trans
+                i18nKey="loginWithAuthentik"
+                defaults="Se connecter avec Authentik"
+              />
+            </Button>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={props.onCancel}>
+            {t("back")}
+          </Button>
+        </DialogFooter>
+      </>
+    );
+  }
+
   return (
     <>
       <DialogHeader>
@@ -276,17 +337,10 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             if (!pollId) {
               throw new Error("NewParticipantForm needs a pollId");
             }
-            const session = await createGuestIfNeeded();
-            if (!session.ok) {
-              setError("root", {
-                message: getSubmitErrorMessage(session.reason),
-              });
-              return;
-            }
             const result = await addParticipant.execute({
-              name: data.name,
+              name: user.name,
               votes: props.votes,
-              email: data.email,
+              email: user.email,
               note: data.note,
               pollId,
               timeZone,
@@ -307,12 +361,17 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             name="name"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{t("name")}</FormLabel>
+                <div className="flex items-center justify-between">
+                  <FormLabel>{t("name")}</FormLabel>
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Certifie Authentik
+                  </span>
+                </div>
                 <FormControl>
                   <Input
-                    className="w-full"
+                    className="w-full bg-muted/40 cursor-not-allowed"
                     {...passwordManagerIgnoreProps}
-                    autoFocus={true}
+                    readOnly={true}
                     disabled={formState.isSubmitting}
                     placeholder={t("namePlaceholder")}
                     {...field}
@@ -327,16 +386,17 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  {t("email")}
-                  {!isEmailRequired
-                    ? ` ${t("optional", { defaultValue: "(optional)" })}`
-                    : null}
-                </FormLabel>
+                <div className="flex items-center justify-between">
+                  <FormLabel>{t("email")}</FormLabel>
+                  <span className="text-xs text-muted-foreground font-medium">
+                    Certifie Authentik
+                  </span>
+                </div>
                 <FormControl>
                   <Input
-                    className="w-full"
+                    className="w-full bg-muted/40 cursor-not-allowed"
                     {...passwordManagerIgnoreProps}
+                    readOnly={true}
                     disabled={formState.isSubmitting}
                     placeholder={t("emailPlaceholder")}
                     {...field}

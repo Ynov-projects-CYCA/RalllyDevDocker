@@ -37,7 +37,7 @@ import { AppError } from "@/lib/errors/app-error";
 import { flushPostHog, track, trackSystemEvent } from "@/lib/posthog";
 import { createRateLimitGuard } from "@/lib/rate-limit";
 import {
-  anyUserActionClient,
+  authActionClient,
   createRateLimitMiddleware,
   optionalUserActionClient,
 } from "@/lib/safe-action/server";
@@ -187,7 +187,7 @@ async function sendNewResponseNotificationEmail({
   }
 }
 
-export const addParticipantAction = anyUserActionClient
+export const addParticipantAction = authActionClient
   .metadata({ actionName: "add_participant" })
   .use(createRateLimitMiddleware({ requests: 60, duration: "1 m", by: "ip" }))
   .inputSchema(addParticipantSchema)
@@ -198,12 +198,16 @@ export const addParticipantAction = anyUserActionClient
     await pollResponseGuard(`add_participant:poll:${pollId}`, ctx.event);
     const locale = await getLocale();
 
+    // Verrouillage de l'identite du participant avec la session OAuth (Authentik)
+    const certifiedName = ctx.user.name || name;
+    const certifiedEmail = ctx.user.email || email;
+
     const result = await addParticipant({
       pollId,
       userId: ctx.user.id,
       locale,
-      name,
-      email,
+      name: certifiedName,
+      email: certifiedEmail,
       note,
       timeZone,
       token,
@@ -216,7 +220,7 @@ export const addParticipantAction = anyUserActionClient
 
     const { participant, poll, editToken, viaInvite, totalResponses } = result;
 
-    if (email) {
+    if (certifiedEmail) {
       after(async () => {
         // Sent to an address the responder typed, so it is charged to the
         // poll owner: a host cannot use their poll to mail strangers.
@@ -233,7 +237,7 @@ export const addParticipantAction = anyUserActionClient
           return;
         }
         await sendNewParticipantConfirmationEmail({
-          to: email,
+          to: certifiedEmail,
           locale,
           branding: poll.space
             ? await getSpaceBranding(poll.space)
@@ -347,6 +351,13 @@ export const renameParticipantAction = optionalUserActionClient
     }
 
     const { participant, actor } = authorization;
+
+    if (participant.userId) {
+      throw new AppError({
+        code: "FORBIDDEN",
+        message: "Participant name is bound to their OAuth identity",
+      });
+    }
 
     return renameParticipant({
       participantId,

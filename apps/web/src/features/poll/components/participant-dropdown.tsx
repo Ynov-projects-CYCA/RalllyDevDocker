@@ -97,10 +97,12 @@ export const ParticipantDropdown = ({
             <PencilIcon />
             <Trans i18nKey="editVotes" defaults="Edit votes" />
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setIsChangeNameModalVisible(true)}>
-            <TagIcon />
-            <Trans i18nKey="changeName" defaults="Change name" />
-          </DropdownMenuItem>
+          {!participant.userId ? (
+            <DropdownMenuItem onClick={() => setIsChangeNameModalVisible(true)}>
+              <TagIcon />
+              <Trans i18nKey="changeName" defaults="Change name" />
+            </DropdownMenuItem>
+          ) : null}
           {participant.editUrl ? (
             <CopyEditLinkMenuItem
               editUrl={participant.editUrl}
