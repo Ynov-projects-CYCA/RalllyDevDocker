@@ -3,6 +3,8 @@ services:
   # Reverse Proxy (Point d'entree unique - Traefik v3)
   # ============================================================================
   traefik:
+    # Coolify fournit son propre proxy. Activer uniquement pour un lancement autonome.
+    profiles: ["standalone"]
     image: traefik:v3.2
     container_name: traefik
     restart: unless-stopped
@@ -201,7 +203,7 @@ services:
     environment:
       SECRET_PASSWORD: ${RALLLY_SECRET_PASSWORD:-super_secret_password_for_rallly_session_min_32_chars}
       DATABASE_URL: postgres://${RALLLY_POSTGRES_USER:-rallly}:${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}@rallly-postgresql:5432/${RALLLY_POSTGRES_DB:-rallly}
-      NEXT_PUBLIC_BASE_URL: http://${RALLLY_HOSTNAME:-rallly.localhost}
+      NEXT_PUBLIC_BASE_URL: ${RALLLY_BASE_URL:-http://${RALLLY_HOSTNAME:-rallly.localhost}}
       SUPPORT_EMAIL: ${RALLLY_SUPPORT_EMAIL:-support@example.com}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025

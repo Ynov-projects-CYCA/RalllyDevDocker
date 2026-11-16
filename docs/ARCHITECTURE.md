@@ -1,5 +1,46 @@
 # Architecture Technique - Dev avec Docker
 
+## Lancement autonome et deploiement Coolify
+
+Le service Traefik du projet est reserve au profil `standalone`. Pour lancer
+la stack locale avec les domaines `*.localhost` :
+
+```sh
+docker compose --profile standalone up -d --build
+```
+
+Dans Coolify, utiliser `docker-compose.yml` sans activer le profil `standalone`
+ni definir `COMPOSE_PROFILES=standalone`. Le proxy de Coolify gere les ports
+80/443 ; lancer un second Traefik sur ces ports provoque l'erreur
+`Bind for 0.0.0.0:80 failed: port is already allocated`.
+
+Dans les domaines de Coolify, associer chaque domaine au service et au port
+interne correspondants :
+
+| Service | Exemple de domaine dans Coolify |
+|---|---|
+| `rallly-web` | `https://rallly.example.com:3000` |
+| `authentik-server` | `https://auth.example.com:9000` |
+
+Le suffixe de port indique la cible interne du proxy ; l'URL publique utilise
+le port HTTPS standard. Configurer les DNS de ces domaines vers le serveur.
+Mailpit reste accessible aux services SMTP via `mailpit:1025` sans domaine public.
+
+Definir aussi les variables suivantes dans Coolify avec les vrais domaines :
+
+```dotenv
+RALLLY_HOSTNAME=rallly.example.com
+AUTHENTIK_HOSTNAME=auth.example.com
+RALLLY_BASE_URL=https://rallly.example.com
+OIDC_DISCOVERY_URL=https://auth.example.com/application/o/rallly/.well-known/openid-configuration
+```
+
+Dans Authentik, configurer le fournisseur OIDC et son URL de redirection avec
+le domaine public de Rallly ; reporter ses identifiants dans `OIDC_CLIENT_ID`
+et `OIDC_CLIENT_SECRET`.
+
+Reference : [Docker Compose dans Coolify](https://coolify.io/docs/applications/builds/docker-compose).
+
 ## 1. Vue d'Ensemble
 
 Ce projet orchestre une suite applicative multi-services conteneurisee repondant au cahier des charges du module *Dev avec Docker* (M2 DEVFULLSTACK) :
