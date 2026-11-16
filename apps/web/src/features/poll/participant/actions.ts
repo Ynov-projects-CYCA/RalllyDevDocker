@@ -31,13 +31,14 @@ import {
   renameParticipantSchema,
   updateParticipantVotesSchema,
 } from "@/features/poll/participant/schema";
+import { loadOptionalUser } from "@/features/user/loaders";
 import { getLocale } from "@/i18n/server/get-locale";
 import { runtime } from "@/lib/effect/runtime";
 import { AppError } from "@/lib/errors/app-error";
 import { flushPostHog, track, trackSystemEvent } from "@/lib/posthog";
 import { createRateLimitGuard } from "@/lib/rate-limit";
 import {
-  authActionClient,
+  anyUserActionClient,
   createRateLimitMiddleware,
   optionalUserActionClient,
 } from "@/lib/safe-action/server";
@@ -187,24 +188,45 @@ async function sendNewResponseNotificationEmail({
   }
 }
 
-export const addParticipantAction = authActionClient
+export const addParticipantAction = anyUserActionClient
   .metadata({ actionName: "add_participant" })
   .use(createRateLimitMiddleware({ requests: 60, duration: "1 m", by: "ip" }))
   .inputSchema(addParticipantSchema)
   .action(async ({ ctx, parsedInput }) => {
     const { pollId, votes, name, email, note, timeZone, token } = parsedInput;
 
+    const isOidcConfigured = Boolean(
+      env.OIDC_DISCOVERY_URL && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET,
+    );
+
+    const authenticatedUser = await loadOptionalUser();
+
+    if (isOidcConfigured && !authenticatedUser) {
+      throw new AppError({
+        code: "UNAUTHORIZED",
+        message: "Authentication with OAuth is required to vote",
+      });
+    }
+
     ctx.event.pollId = pollId;
     await pollResponseGuard(`add_participant:poll:${pollId}`, ctx.event);
     const locale = await getLocale();
 
-    // Verrouillage de l'identite du participant avec la session OAuth (Authentik)
-    const certifiedName = ctx.user.name || name;
-    const certifiedEmail = ctx.user.email || email;
+    // Verrouillage de l'identite du participant avec la session OAuth lorsqu'elle est configuree
+    const certifiedName =
+      isOidcConfigured && authenticatedUser ? authenticatedUser.name : name;
+    const certifiedEmail =
+      isOidcConfigured && authenticatedUser
+        ? (authenticatedUser.email ?? email)
+        : email;
+    const participantUserId =
+      isOidcConfigured && authenticatedUser
+        ? authenticatedUser.id
+        : ctx.user.id;
 
     const result = await addParticipant({
       pollId,
-      userId: ctx.user.id,
+      userId: participantUserId,
       locale,
       name: certifiedName,
       email: certifiedEmail,
@@ -352,7 +374,11 @@ export const renameParticipantAction = optionalUserActionClient
 
     const { participant, actor } = authorization;
 
-    if (participant.userId) {
+    const isOidcConfigured = Boolean(
+      env.OIDC_DISCOVERY_URL && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET,
+    );
+
+    if (isOidcConfigured && participant.userId) {
       throw new AppError({
         code: "FORBIDDEN",
         message: "Participant name is bound to their OAuth identity",

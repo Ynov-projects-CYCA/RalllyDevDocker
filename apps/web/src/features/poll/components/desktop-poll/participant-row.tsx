@@ -78,10 +78,13 @@ export const ParticipantRowView: React.FunctionComponent<{
               name={name}
               src={image ?? undefined}
             />
-            <div className="flex flex-col min-w-0">
+            <div className="flex min-w-0 flex-col">
               <ParticipantName>{name}</ParticipantName>
               {email ? (
-                <span className="truncate text-xs text-muted-foreground leading-tight" title={email}>
+                <span
+                  className="truncate text-muted-foreground text-xs leading-tight"
+                  title={email}
+                >
                   {email}
                 </span>
               ) : null}

@@ -31,6 +31,7 @@ const ParticipantRowForm = ({
   name,
   image,
   isNew,
+  isYou,
   className,
 }: ParticipantRowFormProps) => {
   const { t } = useTranslation();
@@ -53,7 +54,8 @@ const ParticipantRowForm = ({
 
   const { user } = useUser();
   const participantName =
-    name ?? (user && !user.isGuest ? user.name : t("you", { defaultValue: "You" }));
+    name ??
+    (user && !user.isGuest ? user.name : t("you", { defaultValue: "You" }));
   const participantEmail =
     isYou || isNew
       ? user && !user.isGuest
@@ -78,11 +80,11 @@ const ParticipantRowForm = ({
             ) : (
               <YouAvatar />
             )}
-            <div className="flex flex-col min-w-0">
+            <div className="flex min-w-0 flex-col">
               <ParticipantName>{participantName}</ParticipantName>
               {participantEmail ? (
                 <span
-                  className="truncate text-xs text-muted-foreground leading-tight"
+                  className="truncate text-muted-foreground text-xs leading-tight"
                   title={participantEmail}
                 >
                   {participantEmail}

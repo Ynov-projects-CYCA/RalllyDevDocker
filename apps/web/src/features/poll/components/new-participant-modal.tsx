@@ -136,8 +136,9 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
   const isEmailRequired =
     props.requireParticipantEmail ?? poll?.requireParticipantEmail ?? false;
   const pollId = props.pollId ?? poll?.id;
+  const isOAuthRequired = poll?.oidcEnabled ?? false;
   const { timeZone } = useDateTimeConfig();
-  const { user } = useUser();
+  const { user, createGuestIfNeeded } = useUser();
   const isLoggedIn = user && !user.isGuest;
   const form = useForm({
     resolver: zodResolver(schema),
@@ -257,21 +258,14 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
     );
   }
 
-  if (!isLoggedIn) {
+  if (isOAuthRequired && !isLoggedIn) {
     return (
       <>
         <DialogHeader>
-          <DialogTitle>
-            <Trans
-              i18nKey="newParticipantLoginRequiredTitle"
-              defaults="Connexion requise pour voter"
-            />
-          </DialogTitle>
+          <DialogTitle>Connexion requise pour voter</DialogTitle>
           <DialogDescription>
-            <Trans
-              i18nKey="newParticipantLoginRequiredDescription"
-              defaults="Ce sondage exige une authentification pour enregistrer votre vote. Votre identite sera certifiee par Authentik."
-            />
+            Ce sondage exige une authentification pour enregistrer votre vote.
+            Votre identite sera certifiee par Authentik.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-4">
@@ -280,11 +274,9 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             <VoteSummary votes={props.votes} />
           </div>
           <div className="rounded-lg border border-border bg-muted/30 p-4 text-center">
-            <p className="mb-4 text-sm text-muted-foreground">
-              <Trans
-                i18nKey="newParticipantLoginPrompt"
-                defaults="Connectez-vous avec votre compte Authentik pour valider votre disponibilite."
-              />
+            <p className="mb-4 text-muted-foreground text-sm">
+              Connectez-vous avec votre compte Authentik pour valider votre
+              disponibilite.
             </p>
             <Button
               className="w-full"
@@ -301,10 +293,7 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
                 });
               }}
             >
-              <Trans
-                i18nKey="loginWithAuthentik"
-                defaults="Se connecter avec Authentik"
-              />
+              Se connecter avec Authentik
             </Button>
           </div>
         </div>
@@ -337,10 +326,19 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             if (!pollId) {
               throw new Error("NewParticipantForm needs a pollId");
             }
+            if (!isOAuthRequired) {
+              const session = await createGuestIfNeeded();
+              if (!session.ok) {
+                setError("root", {
+                  message: getSubmitErrorMessage(session.reason),
+                });
+                return;
+              }
+            }
             const result = await addParticipant.execute({
-              name: user.name,
+              name: isOAuthRequired && user ? user.name : data.name,
               votes: props.votes,
-              email: user.email,
+              email: isOAuthRequired && user ? user.email : data.email,
               note: data.note,
               pollId,
               timeZone,
@@ -361,17 +359,25 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             name="name"
             render={({ field }) => (
               <FormItem>
-                <div className="flex items-center justify-between">
+                {isOAuthRequired ? (
+                  <div className="flex items-center justify-between">
+                    <FormLabel>{t("name")}</FormLabel>
+                    <span className="font-medium text-muted-foreground text-xs">
+                      Certifie Authentik
+                    </span>
+                  </div>
+                ) : (
                   <FormLabel>{t("name")}</FormLabel>
-                  <span className="text-xs text-muted-foreground font-medium">
-                    Certifie Authentik
-                  </span>
-                </div>
+                )}
                 <FormControl>
                   <Input
-                    className="w-full bg-muted/40 cursor-not-allowed"
+                    className={cn(
+                      "w-full",
+                      isOAuthRequired && "cursor-not-allowed bg-muted/40",
+                    )}
                     {...passwordManagerIgnoreProps}
-                    readOnly={true}
+                    autoFocus={!isOAuthRequired}
+                    readOnly={isOAuthRequired}
                     disabled={formState.isSubmitting}
                     placeholder={t("namePlaceholder")}
                     {...field}
@@ -386,17 +392,29 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <div className="flex items-center justify-between">
-                  <FormLabel>{t("email")}</FormLabel>
-                  <span className="text-xs text-muted-foreground font-medium">
-                    Certifie Authentik
-                  </span>
-                </div>
+                {isOAuthRequired ? (
+                  <div className="flex items-center justify-between">
+                    <FormLabel>{t("email")}</FormLabel>
+                    <span className="font-medium text-muted-foreground text-xs">
+                      Certifie Authentik
+                    </span>
+                  </div>
+                ) : (
+                  <FormLabel>
+                    {t("email")}
+                    {!isEmailRequired
+                      ? ` ${t("optional", { defaultValue: "(optional)" })}`
+                      : null}
+                  </FormLabel>
+                )}
                 <FormControl>
                   <Input
-                    className="w-full bg-muted/40 cursor-not-allowed"
+                    className={cn(
+                      "w-full",
+                      isOAuthRequired && "cursor-not-allowed bg-muted/40",
+                    )}
                     {...passwordManagerIgnoreProps}
-                    readOnly={true}
+                    readOnly={isOAuthRequired}
                     disabled={formState.isSubmitting}
                     placeholder={t("emailPlaceholder")}
                     {...field}

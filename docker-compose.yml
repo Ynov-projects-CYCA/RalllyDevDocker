@@ -198,20 +198,25 @@ services:
     depends_on:
       rallly-postgresql:
         condition: service_healthy
+    ports:
+      - "${PORT:-3000}:3000"
     environment:
       SECRET_PASSWORD: ${RALLLY_SECRET_PASSWORD:-super_secret_password_for_rallly_session_min_32_chars}
-      DATABASE_URL: postgres://${RALLLY_POSTGRES_USER:-rallly}:${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}@rallly-postgresql:5432/${RALLLY_POSTGRES_DB:-rallly}
-      NEXT_PUBLIC_BASE_URL: http://${RALLLY_HOSTNAME:-rallly.localhost}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${RALLLY_POSTGRES_USER:-rallly}:${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}@rallly-postgresql:5432/${RALLLY_POSTGRES_DB:-rallly}}
+      NEXT_PUBLIC_BASE_URL: ${RALLLY_BASE_URL:-http://${RALLLY_HOSTNAME:-rallly.localhost}}
       SUPPORT_EMAIL: ${RALLLY_SUPPORT_EMAIL:-support@example.com}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
-      EMAIL_LOGIN_ENABLED: "false"
+      EMAIL_LOGIN_ENABLED: ${EMAIL_LOGIN_ENABLED:-true}
       # Federation OIDC avec Authentik
       OIDC_NAME: ${OIDC_NAME:-Authentik}
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-http://auth.localhost/application/o/rallly/.well-known/openid-configuration}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-rallly-client-id}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-rallly-client-secret}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+    env_file:
+      - path: apps/web/.env
+        required: false
     networks:
       - rallly-internal-net
       - app-net
