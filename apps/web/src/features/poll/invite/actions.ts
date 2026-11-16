@@ -25,13 +25,19 @@ export const sendPollInviteAction = authActionClient
   .use(createRateLimitMiddleware({ requests: 30, duration: "1 m", by: "user" }))
   .inputSchema(sendPollInviteSchema)
   .action(async ({ ctx, parsedInput }) => {
-    const { pollId, email } = parsedInput;
+    const { pollId, email, recipientName, message } = parsedInput;
 
     if (!(await hasPollAdminAccess(pollId, ctx.user.id))) {
       throw new AppError({ code: "NOT_FOUND", message: "Poll not found" });
     }
 
-    const result = await sendPollInvite({ pollId, userId: ctx.user.id, email });
+    const result = await sendPollInvite({
+      pollId,
+      userId: ctx.user.id,
+      email,
+      recipientName,
+      message,
+    });
 
     if (!result.ok && result.reason === "paymentRequired") {
       throw new AppError({

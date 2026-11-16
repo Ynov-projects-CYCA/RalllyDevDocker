@@ -1,0 +1,39 @@
+# Configuration dynamique Traefik (File Provider)
+# Permet un routage explicite et deterministe vers les conteneurs du reseau traefik-net,
+# independamment des limitations du socket Docker sous certains environnements comme Docker Desktop / WSL 2.
+
+http:
+  routers:
+    rallly:
+      rule: "Host(`rallly.localhost`)"
+      entryPoints:
+        - "web"
+      service: "rallly"
+
+    authentik:
+      rule: "Host(`auth.localhost`)"
+      entryPoints:
+        - "web"
+      service: "authentik"
+
+    mailpit:
+      rule: "Host(`mail.localhost`)"
+      entryPoints:
+        - "web"
+      service: "mailpit"
+
+  services:
+    rallly:
+      loadBalancer:
+        servers:
+          - url: "http://rallly-web:3000"
+
+    authentik:
+      loadBalancer:
+        servers:
+          - url: "http://authentik-server:9000"
+
+    mailpit:
+      loadBalancer:
+        servers:
+          - url: "http://mailpit:8025"
