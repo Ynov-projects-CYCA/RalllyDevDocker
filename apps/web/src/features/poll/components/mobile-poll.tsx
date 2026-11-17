@@ -102,7 +102,17 @@ const MobilePoll: React.FunctionComponent = () => {
             src={participant.image ?? undefined}
             size="sm"
           />
-          <ParticipantName>{participant.name}</ParticipantName>
+          <div className="flex min-w-0 flex-col">
+            <ParticipantName>{participant.name}</ParticipantName>
+            {participant.email ? (
+              <span
+                className="truncate text-muted-foreground text-xs leading-tight"
+                title={participant.email}
+              >
+                {participant.email}
+              </span>
+            ) : null}
+          </div>
           {session.ownsObject(participant) && (
             <Badge>
               <Trans i18nKey="you" defaults="You" />
@@ -146,9 +156,23 @@ const MobilePoll: React.FunctionComponent = () => {
             <div className="flex h-9 grow items-center px-1">
               <Participant>
                 <YouAvatar />
-                <ParticipantName>
-                  {t("you", { defaultValue: "You" })}
-                </ParticipantName>
+                <div className="flex min-w-0 flex-col">
+                  <ParticipantName>
+                    {session.user && !session.user.isGuest
+                      ? session.user.name
+                      : t("you", { defaultValue: "You" })}
+                  </ParticipantName>
+                  {session.user &&
+                  !session.user.isGuest &&
+                  session.user.email ? (
+                    <span
+                      className="truncate text-muted-foreground text-xs leading-tight"
+                      title={session.user.email}
+                    >
+                      {session.user.email}
+                    </span>
+                  ) : null}
+                </div>
               </Participant>
             </div>
           )}

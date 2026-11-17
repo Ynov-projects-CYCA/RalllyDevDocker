@@ -840,6 +840,11 @@ export async function getPollDetails({
         }
       : null,
     inviteLink: shortUrl(`/invite/${poll.id}`),
+    oidcEnabled: Boolean(
+      process.env.OIDC_DISCOVERY_URL &&
+        process.env.OIDC_CLIENT_ID &&
+        process.env.OIDC_CLIENT_SECRET,
+    ),
   };
 }
 

@@ -16,6 +16,7 @@ import {
 import { useOptions, usePoll } from "@/features/poll/components/poll-context";
 import { useVotingForm } from "@/features/poll/components/voting-form";
 import { YouAvatar } from "@/features/poll/components/you-avatar";
+import { useUser } from "@/features/user/client";
 import { Trans, useTranslation } from "@/i18n/client";
 import { getOptionDateTimeLabel } from "@/lib/utils/date-time-utils";
 import { VoteSelector } from "../vote-selector";
@@ -33,6 +34,7 @@ const ParticipantRowForm = ({
   name,
   image,
   isNew,
+  isYou,
   className,
 }: ParticipantRowFormProps) => {
   const { t } = useTranslation();
@@ -54,13 +56,22 @@ const ParticipantRowForm = ({
     };
   }, [form]);
 
-  const participantName = name ?? t("you", { defaultValue: "You" });
+  const { user } = useUser();
+  const participantName =
+    name ??
+    (user && !user.isGuest ? user.name : t("you", { defaultValue: "You" }));
+  const participantEmail =
+    isYou || isNew
+      ? user && !user.isGuest
+        ? user.email
+        : undefined
+      : undefined;
 
   return (
     <tr className={cn("group", className)}>
       <td
         style={{ minWidth: 235, maxWidth: 235 }}
-        className="sticky left-0 z-10 h-12 border-b border-b-border-muted bg-card px-3 group-[.last-row]:border-b-0"
+        className="sticky left-0 z-10 min-h-12 border-b border-b-border-muted bg-card px-3 py-1.5 group-[.last-row]:border-b-0"
       >
         <div className="flex items-center justify-between gap-x-2.5">
           <Participant>
@@ -73,7 +84,17 @@ const ParticipantRowForm = ({
             ) : (
               <YouAvatar />
             )}
-            <ParticipantName>{participantName}</ParticipantName>
+            <div className="flex min-w-0 flex-col">
+              <ParticipantName>{participantName}</ParticipantName>
+              {participantEmail ? (
+                <span
+                  className="truncate text-muted-foreground text-xs leading-tight"
+                  title={participantEmail}
+                >
+                  {participantEmail}
+                </span>
+              ) : null}
+            </div>
           </Participant>
           {isNew ? (
             <Button

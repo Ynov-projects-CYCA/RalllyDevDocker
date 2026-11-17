@@ -5,7 +5,7 @@ services:
   traefik:
     image: traefik:v3.2
     container_name: traefik
-    restart: unless-stopped
+    restart: "no"
     command:
       - "--providers.file.filename=/etc/traefik/dynamic.yml"
       - "--providers.file.watch=true"
@@ -36,7 +36,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21
     container_name: mailpit
-    restart: unless-stopped
+    restart: "no"
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
@@ -55,7 +55,7 @@ services:
   authentik-postgresql:
     image: postgres:16-alpine
     container_name: authentik-postgresql
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_DB: ${AUTHENTIK_POSTGRES_DB:-authentik}
       POSTGRES_USER: ${AUTHENTIK_POSTGRES_USER:-authentik}
@@ -74,7 +74,7 @@ services:
   authentik-redis:
     image: redis:7-alpine
     container_name: authentik-redis
-    restart: unless-stopped
+    restart: "no"
     command: redis-server --requirepass ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_pass_123}
     environment:
       AUTHENTIK_REDIS_PASSWORD: ${AUTHENTIK_REDIS_PASSWORD:-authentik_redis_pass_123}
@@ -95,7 +95,7 @@ services:
   authentik-server:
     image: ghcr.io/goauthentik/server:2024.8.3
     container_name: authentik-server
-    restart: unless-stopped
+    restart: "no"
     command: server
     depends_on:
       authentik-postgresql:
@@ -131,7 +131,7 @@ services:
   authentik-worker:
     image: ghcr.io/goauthentik/server:2024.8.3
     container_name: authentik-worker
-    restart: unless-stopped
+    restart: "no"
     command: worker
     depends_on:
       authentik-postgresql:
@@ -165,7 +165,7 @@ services:
   rallly-postgresql:
     image: postgres:16-alpine
     container_name: rallly-postgresql
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_DB: ${RALLLY_POSTGRES_DB:-rallly}
       POSTGRES_USER: ${RALLLY_POSTGRES_USER:-rallly}
@@ -194,24 +194,29 @@ services:
       args:
         - SELF_HOSTED=true
     container_name: rallly-web
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       rallly-postgresql:
         condition: service_healthy
+    ports:
+      - "${PORT:-3000}:3000"
     environment:
       SECRET_PASSWORD: ${RALLLY_SECRET_PASSWORD:-super_secret_password_for_rallly_session_min_32_chars}
-      DATABASE_URL: postgres://${RALLLY_POSTGRES_USER:-rallly}:${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}@rallly-postgresql:5432/${RALLLY_POSTGRES_DB:-rallly}
-      NEXT_PUBLIC_BASE_URL: http://${RALLLY_HOSTNAME:-rallly.localhost}
+      DATABASE_URL: ${DATABASE_URL:-postgres://${RALLLY_POSTGRES_USER:-rallly}:${RALLLY_POSTGRES_PASSWORD:-rallly_secure_db_pass_123}@rallly-postgresql:5432/${RALLLY_POSTGRES_DB:-rallly}}
+      NEXT_PUBLIC_BASE_URL: ${RALLLY_BASE_URL:-http://${RALLLY_HOSTNAME:-rallly.localhost}}
       SUPPORT_EMAIL: ${RALLLY_SUPPORT_EMAIL:-support@example.com}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       SMTP_SECURE: "false"
-      EMAIL_LOGIN_ENABLED: "false"
+      EMAIL_LOGIN_ENABLED: ${EMAIL_LOGIN_ENABLED:-true}
       # Federation OIDC avec Authentik
       OIDC_NAME: ${OIDC_NAME:-Authentik}
-      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-http://auth.localhost/application/o/rallly/.well-known/openid-configuration}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-rallly-client-id}
-      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-rallly-client-secret}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+    env_file:
+      - path: apps/web/.env
+        required: false
     networks:
       - rallly-internal-net
       - app-net

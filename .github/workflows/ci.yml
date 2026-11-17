@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - main
+      - develop
   pull_request:
     branches:
       - main
+      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -91,7 +93,7 @@ jobs:
           SUPPORT_EMAIL=support@example.com
           NEXT_PUBLIC_BASE_URL=http://localhost:3000
           EOF
-          docker compose up -d --build --wait --wait-timeout 60
+          docker compose up -d --build --wait --wait-timeout 180
 
       # The image healthcheck hits /api/status, but that endpoint returns
       # 200 even when the database is unreachable and doesn't touch env
