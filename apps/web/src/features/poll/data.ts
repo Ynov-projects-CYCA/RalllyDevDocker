@@ -743,6 +743,8 @@ export async function getPollDetails({
       disableComments: true,
       allowTentativeVotes: true,
       hideScores: true,
+      hideResponses: true,
+      responseRevealThreshold: true,
       requireParticipantEmail: true,
       muted: true,
       userId: true,

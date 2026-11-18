@@ -1,6 +1,7 @@
 import type { PollConferencing } from "@/features/conferencing/schema";
 import type { VoteType } from "@/features/poll/constants";
 import type { PollClosedReason, PollStatus } from "@/features/poll/schema";
+import type { ResponseVisibility } from "@/features/poll/types";
 import type { SpaceTier } from "@/features/space/schema";
 
 /** One option with its tally. `score` is null when the poll hides scores. */
@@ -59,6 +60,8 @@ export type VotePageView = {
   /** Denominator for the per-option tallies; null when scores are hidden. */
   participantCount: number | null;
   response: VoteResponse | null;
+  /** Whether everyone else's responses, and so the tallies, are withheld. */
+  responseVisibility: ResponseVisibility;
   /** False once the poll is closed or scheduled. */
   canVote: boolean;
 };

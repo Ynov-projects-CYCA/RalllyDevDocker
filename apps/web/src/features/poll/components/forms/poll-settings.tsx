@@ -21,18 +21,54 @@ import { Switch } from "@rallly/ui/switch";
 import { VoteIcon } from "@rallly/ui/vote-icon";
 import {
   BarChart2Icon,
+  EyeIcon,
+  EyeOffIcon,
   ListChecksIcon,
   MailIcon,
   MessageCircleIcon,
   VenetianMaskIcon,
 } from "lucide-react";
-import { useFormContext } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
 import { SettingIcon } from "@/components/setting-icon";
 import { showPayWall, useIsFree } from "@/features/billing/client";
 import { ProBadge } from "@/features/billing/components/pro-badge";
 import type { PollSettingsFormData } from "@/features/poll/components/forms/types";
 import type { VoteType } from "@/features/poll/constants";
 import { Trans } from "@/i18n/client";
+
+/**
+ * Response counts offered for an early reveal. The schema accepts any count
+ * in range, so a poll saved with another one (through the API, say) gets
+ * its own count listed too rather than a select showing nothing.
+ */
+const RESPONSE_REVEAL_THRESHOLD_PRESETS = [3, 5, 10, 20];
+
+// The select needs a string for "no threshold": the reveal then waits for
+// the poll to be closed or finalized.
+const REVEAL_WHEN_CLOSED = "closed";
+
+function getRevealThresholdChoices(current: number | null) {
+  const counts = new Set(RESPONSE_REVEAL_THRESHOLD_PRESETS);
+  if (current !== null) {
+    counts.add(current);
+  }
+  return [...counts].sort((a, b) => a - b);
+}
+
+function RevealThresholdLabel({ threshold }: { threshold: number | null }) {
+  return threshold === null ? (
+    <Trans
+      i18nKey="revealResponsesWhenClosed"
+      defaults="When the poll is closed or finalized"
+    />
+  ) : (
+    <Trans
+      i18nKey="revealResponsesAfterCount"
+      defaults="{count, plural, one {After # response} other {After # responses}}"
+      values={{ count: threshold }}
+    />
+  );
+}
 
 /**
  * Each answer as its icon plus its name, so the choice shows exactly what a
@@ -73,6 +109,10 @@ export const PollSettingsForm = ({
 }>) => {
   const form = useFormContext<PollSettingsFormData>();
   const isFree = useIsFree();
+  const hideResponses = useWatch({
+    control: form.control,
+    name: "hideResponses",
+  });
 
   return (
     <Card>
@@ -200,6 +240,132 @@ export const PollSettingsForm = ({
               </Field>
             )}
           />
+          <FormField
+            control={form.control}
+            name="hideResponses"
+            render={({ field }) => (
+              <Field orientation="horizontal">
+                <SettingIcon>
+                  <EyeOffIcon />
+                </SettingIcon>
+                <FieldContent>
+                  <FieldLabel htmlFor="hide-responses">
+                    <Trans
+                      i18nKey="hideResponsesTitle"
+                      defaults="Hide responses"
+                    />
+                    {isFree ? <ProBadge /> : null}
+                  </FieldLabel>
+                  <FieldDescription>
+                    <Trans
+                      i18nKey="hideResponsesDescription"
+                      defaults="Participants only see their own response until the poll is closed or finalized. You always see everyone's."
+                    />
+                  </FieldDescription>
+                </FieldContent>
+                <Switch
+                  id="hide-responses"
+                  checked={!!field.value}
+                  onCheckedChange={(checked) => {
+                    if (checked && isFree) {
+                      showPayWall({
+                        from: "poll-settings",
+                        setting: "hideResponses",
+                      });
+                      return;
+                    }
+                    field.onChange(checked);
+                    // A threshold only applies while responses are hidden,
+                    // so turning hiding back on starts from the default.
+                    if (!checked) {
+                      form.setValue("responseRevealThreshold", null);
+                    }
+                  }}
+                />
+              </Field>
+            )}
+          />
+          {hideResponses ? (
+            <FormField
+              control={form.control}
+              name="responseRevealThreshold"
+              render={({ field }) => {
+                const value = field.value ?? null;
+                const choices = getRevealThresholdChoices(value);
+
+                return (
+                  // Responsive for the same reason as the vote options row:
+                  // the select would crush the label beside it on a narrow
+                  // field group.
+                  <Field
+                    orientation="responsive"
+                    className="@md/field-group:gap-2 gap-4"
+                  >
+                    <SettingIcon>
+                      <EyeIcon />
+                    </SettingIcon>
+                    <FieldContent>
+                      <FieldLabel htmlFor="reveal-responses">
+                        <Trans
+                          i18nKey="revealResponsesTitle"
+                          defaults="Reveal responses"
+                        />
+                      </FieldLabel>
+                      <FieldDescription>
+                        <Trans
+                          i18nKey="revealResponsesDescription"
+                          defaults="Show everyone's responses before the poll is closed or finalized, once enough people have responded."
+                        />
+                      </FieldDescription>
+                    </FieldContent>
+                    <div>
+                      <Select
+                        items={{
+                          [REVEAL_WHEN_CLOSED]: (
+                            <RevealThresholdLabel threshold={null} />
+                          ),
+                          ...Object.fromEntries(
+                            choices.map((count) => [
+                              String(count),
+                              <RevealThresholdLabel
+                                key={count}
+                                threshold={count}
+                              />,
+                            ]),
+                          ),
+                        }}
+                        value={
+                          value === null ? REVEAL_WHEN_CLOSED : String(value)
+                        }
+                        onValueChange={(next) => {
+                          if (!next) {
+                            return;
+                          }
+                          field.onChange(
+                            next === REVEAL_WHEN_CLOSED ? null : Number(next),
+                          );
+                        }}
+                      >
+                        <SelectTrigger id="reveal-responses">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={REVEAL_WHEN_CLOSED}>
+                            <RevealThresholdLabel threshold={null} />
+                          </SelectItem>
+                          {choices.map((count) => (
+                            <SelectItem key={count} value={String(count)}>
+                              <RevealThresholdLabel threshold={count} />
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </Field>
+                );
+              }}
+            />
+          ) : null}
           <FormField
             control={form.control}
             name="enableComments"

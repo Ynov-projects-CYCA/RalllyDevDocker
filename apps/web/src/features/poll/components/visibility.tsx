@@ -8,6 +8,7 @@ import {
   usePermissions,
   usePoll,
 } from "@/features/poll/client";
+import type { ResponseVisibility } from "@/features/poll/types";
 
 export const IfScoresVisible = (props: React.PropsWithChildren) => {
   const context = React.useContext(VisibilityContext);
@@ -23,10 +24,16 @@ export const useVisibility = () => {
   return React.useContext(VisibilityContext);
 };
 
+/**
+ * The default serves the host's pages, which mount no provider: they read
+ * every response, so nothing is withheld from them.
+ */
 const VisibilityContext = React.createContext<{
   canSeeScores: boolean;
+  responseVisibility: ResponseVisibility;
 }>({
   canSeeScores: true,
+  responseVisibility: { hidden: false },
 });
 
 export const useVisibleParticipants = () => {
@@ -46,7 +53,15 @@ export const useVisibleParticipants = () => {
   return filteredParticipants;
 };
 
-export const VisibilityProvider = ({ children }: React.PropsWithChildren) => {
+/**
+ * `responseVisibility` comes from the loader, which has already left hidden
+ * responses out of the participant list: what remains is the viewer's own,
+ * so a tally of it would pass one person's votes off as the room's.
+ */
+export const VisibilityProvider = ({
+  responseVisibility,
+  children,
+}: React.PropsWithChildren<{ responseVisibility: ResponseVisibility }>) => {
   const poll = usePoll();
   const { participants } = useParticipants();
   const { canEditParticipant } = usePermissions();
@@ -54,12 +69,14 @@ export const VisibilityProvider = ({ children }: React.PropsWithChildren) => {
     return canEditParticipant(participant.id);
   });
 
-  const canSeeScores = poll.hideScores ? userAlreadyVoted : true;
+  const canSeeScores =
+    !responseVisibility.hidden && (poll.hideScores ? userAlreadyVoted : true);
 
   return (
     <VisibilityContext.Provider
       value={{
         canSeeScores,
+        responseVisibility,
       }}
     >
       {children}

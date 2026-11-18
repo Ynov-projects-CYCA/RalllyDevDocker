@@ -39,11 +39,15 @@ import {
   checkOpenPollCapacity,
   OpenPollLimitError,
 } from "@/features/poll/limit/mutations";
-import { MAX_POLL_DESCRIPTION_LENGTH } from "@/features/poll/schema";
+import {
+  MAX_POLL_DESCRIPTION_LENGTH,
+  responseRevealThresholdSchema,
+} from "@/features/poll/schema";
 import {
   getChosenOptionRank,
   getFinalizePlanGate,
   getFinalizeTiming,
+  resolveHiddenResponsesSettings,
   summarizeNotifySelection,
 } from "@/features/poll/utils";
 import { queueReviewRequest } from "@/features/review-request/mutations";
@@ -196,6 +200,11 @@ export const polls = router({
           .optional(),
         hideParticipants: z.boolean().optional(),
         hideScores: z.boolean().optional(),
+        hideResponses: z.boolean().optional(),
+        // Null: reveal only once the poll is closed or finalized.
+        responseRevealThreshold: responseRevealThresholdSchema
+          .nullable()
+          .optional(),
         disableComments: z.boolean().optional(),
         allowTentativeVotes: z.boolean().optional(),
         requireParticipantEmail: z.boolean().optional(),
@@ -301,6 +310,11 @@ export const polls = router({
 
       const kind = isTimePoll ? "time" : "date";
 
+      const hiddenResponses = resolveHiddenResponsesSettings({
+        current: { hideResponses: false, responseRevealThreshold: null },
+        input,
+      });
+
       const poll = await prisma
         .$transaction(async (tx) => {
           await assertOpenPollCapacity(tx, {
@@ -334,6 +348,8 @@ export const polls = router({
               disableComments: input.disableComments,
               allowTentativeVotes: input.allowTentativeVotes,
               hideScores: input.hideScores,
+              hideResponses: hiddenResponses.hideResponses,
+              responseRevealThreshold: hiddenResponses.responseRevealThreshold,
               requireParticipantEmail: input.requireParticipantEmail,
               spaceId,
             },
@@ -431,6 +447,8 @@ export const polls = router({
           allowTentativeVotes: poll.allowTentativeVotes,
           hideParticipants: poll.hideParticipants,
           hideScores: poll.hideScores,
+          hideResponses: poll.hideResponses,
+          responseRevealThreshold: poll.responseRevealThreshold,
           requireParticipantEmail: poll.requireParticipantEmail,
           isGuest: ctx.user.isGuest,
         },
@@ -463,6 +481,12 @@ export const polls = router({
         disableComments: z.boolean().optional(),
         allowTentativeVotes: z.boolean().optional(),
         hideScores: z.boolean().optional(),
+        hideResponses: z.boolean().optional(),
+        // Omitted leaves it unchanged; null waits for the poll to be closed
+        // or finalized.
+        responseRevealThreshold: responseRevealThresholdSchema
+          .nullable()
+          .optional(),
         requireParticipantEmail: z.boolean().optional(),
       }),
     )
@@ -594,6 +618,8 @@ export const polls = router({
             timeZone: true,
             hideParticipants: true,
             hideScores: true,
+            hideResponses: true,
+            responseRevealThreshold: true,
             disableComments: true,
             allowTentativeVotes: true,
             requireParticipantEmail: true,
@@ -704,6 +730,14 @@ export const polls = router({
         });
         const kind = (maxDuration._max.duration ?? 0) > 0 ? "time" : "date";
 
+        // Resolved against the locked row: an edit that only turns hiding
+        // off must clear the stored threshold too, or the CHECK constraint
+        // rejects the update.
+        const hiddenResponses = resolveHiddenResponsesSettings({
+          current: prior,
+          input,
+        });
+
         // Conditional on status so a booking that lands after the check above
         // rolls this edit back instead of it silently missing the event.
         const { count: updated } = await tx.poll.updateMany({
@@ -721,6 +755,8 @@ export const polls = router({
             timeZone: kind === "time" ? input.timeZone : null,
             hideScores: input.hideScores,
             hideParticipants: input.hideParticipants,
+            hideResponses: hiddenResponses.hideResponses,
+            responseRevealThreshold: hiddenResponses.responseRevealThreshold,
             disableComments: input.disableComments,
             allowTentativeVotes: input.allowTentativeVotes,
             requireParticipantEmail: input.requireParticipantEmail,
@@ -755,6 +791,8 @@ export const polls = router({
             timeZone: prior.timeZone,
             hideParticipants: prior.hideParticipants,
             hideScores: prior.hideScores,
+            hideResponses: prior.hideResponses,
+            responseRevealThreshold: prior.responseRevealThreshold,
             disableComments: prior.disableComments,
             allowTentativeVotes: prior.allowTentativeVotes,
             requireParticipantEmail: prior.requireParticipantEmail,
@@ -767,6 +805,8 @@ export const polls = router({
             timeZone: nextTimeZone,
             hideParticipants: input.hideParticipants,
             hideScores: input.hideScores,
+            hideResponses: hiddenResponses.hideResponses,
+            responseRevealThreshold: hiddenResponses.responseRevealThreshold,
             disableComments: input.disableComments,
             allowTentativeVotes: input.allowTentativeVotes,
             requireParticipantEmail: input.requireParticipantEmail,
@@ -845,6 +885,8 @@ export const polls = router({
           requireParticipantEmail: true,
           hideParticipants: true,
           hideScores: true,
+          hideResponses: true,
+          responseRevealThreshold: true,
           timeZone: true,
           muted: true,
           space: { select: { tier: true } },
@@ -895,6 +937,8 @@ export const polls = router({
         input.disableComments !== undefined ||
         input.allowTentativeVotes !== undefined ||
         input.hideScores !== undefined ||
+        input.hideResponses !== undefined ||
+        input.responseRevealThreshold !== undefined ||
         input.requireParticipantEmail !== undefined;
 
       if (hasDetailsUpdate) {
@@ -932,6 +976,8 @@ export const polls = router({
             allow_tentative_votes: !!updatedPoll.allowTentativeVotes,
             hide_participants: !!updatedPoll.hideParticipants,
             hide_scores: !!updatedPoll.hideScores,
+            hide_responses: updatedPoll.hideResponses,
+            response_reveal_threshold: updatedPoll.responseRevealThreshold,
             require_participant_email: !!updatedPoll.requireParticipantEmail,
           },
           groups: {
@@ -1771,6 +1817,8 @@ export const polls = router({
           timeZone: true,
           hideParticipants: true,
           hideScores: true,
+          hideResponses: true,
+          responseRevealThreshold: true,
           requireParticipantEmail: true,
           disableComments: true,
           allowTentativeVotes: true,
@@ -1825,6 +1873,8 @@ export const polls = router({
             description: poll.description,
             hideParticipants: poll.hideParticipants,
             hideScores: poll.hideScores,
+            hideResponses: poll.hideResponses,
+            responseRevealThreshold: poll.responseRevealThreshold,
             disableComments: poll.disableComments,
             allowTentativeVotes: poll.allowTentativeVotes,
             kind: poll.kind,

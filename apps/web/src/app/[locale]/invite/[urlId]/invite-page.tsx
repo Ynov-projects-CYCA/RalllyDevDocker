@@ -4,9 +4,11 @@ import { ArrowUpRightIcon, EyeIcon } from "lucide-react";
 import { Link } from "@/components/link";
 import { Spinner } from "@/components/spinner";
 import { EventCard } from "@/features/poll/components/event-card";
+import { HiddenResponsesNotice } from "@/features/poll/components/hidden-responses-notice";
 import { PollFooter } from "@/features/poll/components/poll-footer";
 import { PollPageShell } from "@/features/poll/components/poll-page-shell";
 import { ResponsiveResults } from "@/features/poll/components/responsive-results";
+import { useVisibility } from "@/features/poll/components/visibility";
 import { VotingForm } from "@/features/poll/components/voting-form";
 import { FloatingComments } from "@/features/poll/invite/components/floating-comments";
 import { Trans } from "@/i18n/client";
@@ -38,6 +40,7 @@ export function InvitePage({
   canManage: boolean;
 }) {
   const hydrated = useHydrated();
+  const { responseVisibility } = useVisibility();
 
   if (!hydrated) {
     return <InvitePageLoading />;
@@ -46,6 +49,7 @@ export function InvitePage({
   const content = (
     <>
       <EventCard description={description} />
+      <HiddenResponsesNotice visibility={responseVisibility} />
       <VotingForm>
         <ResponsiveResults />
         <FloatingComments />
