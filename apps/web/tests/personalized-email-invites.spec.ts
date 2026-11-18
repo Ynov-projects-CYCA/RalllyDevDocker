@@ -40,11 +40,14 @@ test("sends a named invitation with an optional personal message", async ({
     await sendButton.click();
     await expect(nameField).toHaveAttribute("aria-invalid", "true");
     await nameField.fill("Alice");
+    await expect(nameField).not.toHaveAttribute("aria-invalid", "true");
     await emailField.fill("invalid-email");
     await sendButton.click();
     await expect(emailField).toHaveAttribute("aria-invalid", "true");
 
     await emailField.fill(recipientEmail);
+    await expect(emailField).not.toHaveAttribute("aria-invalid", "true");
+    await messageField.click();
     await messageField.fill(message);
     await sendButton.click();
     const row = dialog

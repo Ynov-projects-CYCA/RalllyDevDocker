@@ -59,6 +59,7 @@ const schema = z.union([requiredEmailSchema, optionalEmailSchema]);
 
 interface NewParticipantModalProps {
   votes: { optionId: string; type: VoteType }[];
+  getVotes?: () => { optionId: string; type: VoteType }[] | null;
   /** These fall back to the poll in context on the legacy surfaces. */
   pollId?: string;
   requireParticipantEmail?: boolean;
@@ -158,6 +159,11 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
 
   const getSubmitErrorMessage = (reason: string) => {
     switch (reason) {
+      case "expiredOptions":
+        return t("pollOptionsExpired", {
+          defaultValue:
+            "Some time slots have expired. Please review your response before saving.",
+        });
       case "full":
       case "closed":
       case "notFound":
@@ -326,6 +332,15 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
             if (!pollId) {
               throw new Error("NewParticipantForm needs a pollId");
             }
+            if (props.getVotes && !props.getVotes()) {
+              setError("root", {
+                message: t("pollOptionsExpiredReview", {
+                  defaultValue:
+                    "Some time slots have expired. Their changes were removed. Please review your response before saving.",
+                }),
+              });
+              return;
+            }
             if (!isOAuthRequired) {
               const session = await createGuestIfNeeded();
               if (!session.ok) {
@@ -335,9 +350,19 @@ export const NewParticipantForm = (props: NewParticipantModalProps) => {
                 return;
               }
             }
+            const votes = props.getVotes ? props.getVotes() : props.votes;
+            if (!votes) {
+              setError("root", {
+                message: t("pollOptionsExpiredReview", {
+                  defaultValue:
+                    "Some time slots have expired. Their changes were removed. Please review your response before saving.",
+                }),
+              });
+              return;
+            }
             const result = await addParticipant.execute({
               name: isOAuthRequired && user ? user.name : data.name,
-              votes: props.votes,
+              votes,
               email: isOAuthRequired && user ? user.email : data.email,
               note: data.note,
               pollId,
