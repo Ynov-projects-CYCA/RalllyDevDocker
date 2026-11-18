@@ -9,7 +9,9 @@ on:
 
 permissions:
   contents: read
-
+concurrency:
+  group: rallly-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   docker:
     runs-on: ubuntu-latest
@@ -55,3 +57,33 @@ jobs:
             SELF_HOSTED=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+  deploy:
+    name: Déployer Rallly sur la VM
+    needs: docker
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, rallly-deplloy]
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Vérifier la configuration
+        run: sudo -n /opt/RalllyDevDocker/deploy-vm.sh config --quiet
+
+      - name: Télécharger la nouvelle image
+        run: sudo -n /opt/RalllyDevDocker/deploy-vm.sh pull rallly-web
+
+      - name: Mettre à jour Rallly et attendre son état de santé
+        run: |
+          sudo -n /opt/RalllyDevDocker/deploy-vm.sh up \
+            -d --no-build --no-deps \
+            --wait --wait-timeout 180 rallly-web
+
+      - name: Afficher les services
+        if: always()
+        run: sudo -n /opt/RalllyDevDocker/deploy-vm.sh ps
+
+      - name: Afficher les journaux en cas d’échec
+        if: failure()
+        run: sudo -n /opt/RalllyDevDocker/deploy-vm.sh logs --tail=100 rallly-web
